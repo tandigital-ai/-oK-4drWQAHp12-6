@@ -1,0 +1,1077 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hệ thống Quản lý Cấp phát Nhiên liệu Tự động - XNTN Thủ Thiêm</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+        <!-- Thư viện đọc file Excel -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Tối ưu hóa giao diện in ấn phiếu cấp nhiên liệu */
+        @media print {
+            @page {
+                size: A4 portrait;
+                margin: 8mm;
+            }
+            .no-print {
+                display: none !important;
+            }
+            .print-only {
+                display: block !important;
+            }
+            body {
+                background: white;
+                color: black;
+                font-size: 12px;
+            }
+            .page-break {
+                page-break-after: always;
+            }
+        }
+        .print-only {
+            display: none;
+        }    
+                /* ===== Responsive điện thoại (≤768px) - bản tối ưu ===== */
+        @media (max-width: 768px) {
+            /* --- Sidebar dạng ngăn kéo trượt từ trái --- */
+            aside.w-72 {
+                position: fixed;
+                top: 0; left: 0; bottom: 0;
+                width: 80% !important;
+                max-width: 320px;
+                z-index: 1000;                 /* cao, nhưng thấp hơn nút hamburger */
+                transform: translateX(-100%);
+                transition: transform .28s ease;
+                border-right: 1px solid #1e293b;
+                overflow-y: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+            body.sidebar-open aside.w-72 { transform: translateX(0); }
+
+            /* Lớp phủ nền: nằm DƯỚI sidebar, KHÔNG che nút hamburger */
+            #sidebar-overlay {
+                position: fixed; inset: 0;
+                background: rgba(2,6,23,.6);
+                z-index: 900;                  /* thấp hơn sidebar & hamburger */
+                display: none;
+            }
+            body.sidebar-open #sidebar-overlay { display: block; }
+
+            /* --- Nút hamburger: z-index cao nhất, vùng chạm ≥ 48px --- */
+            #hamburger-btn {
+                display: inline-flex !important;
+                align-items: center; justify-content: center;
+                width: 44px; height: 44px;
+                min-width: 44px;
+                z-index: 1100;                 /* CAO NHẤT để luôn bấm được */
+                position: relative;
+                cursor: pointer;
+                -webkit-tap-highlight-color: rgba(245,158,11,.3);
+                touch-action: manipulation;
+            }
+
+            /* --- Bố cục tổng chuyển dọc --- */
+            .flex.flex-1 { flex-direction: column; }
+
+            /* --- Header: không tràn, tiêu đề không đè nút --- */
+            header.h-16 {
+                height: auto;
+                min-height: 56px;
+                padding: 8px 10px;
+                flex-wrap: wrap;
+                gap: 6px;
+            }
+            #view-title { font-size: 15px; }
+            #current-date-badge { font-size: 10px; padding: 2px 6px; }
+            /* Nhóm nút Nhập Excel / Chạy Phân bổ: thu nhỏ, xuống hàng gọn */
+            header .flex.items-center.space-x-3 { flex-wrap: wrap; gap: 6px; margin-left: auto; }
+            header .flex.items-center.space-x-3 > button {
+                padding: 6px 10px !important;
+                font-size: 12px !important;
+            }
+
+            main .p-8 { padding: 10px; }
+
+            /* --- Thẻ chỉ số: grid 2 cột gọn --- */
+            #tab-dashboard .grid.grid-cols-1.md\:grid-cols-4 {
+                grid-template-columns: repeat(2, minmax(0,1fr)) !important;
+                gap: 10px !important;
+            }
+            #tab-dashboard .grid.grid-cols-1.md\:grid-cols-4 .p-5 { padding: 12px !important; }
+            #tab-dashboard .grid.grid-cols-1.md\:grid-cols-4 .text-3xl { font-size: 20px !important; }
+            #tab-dashboard .grid.grid-cols-1.md\:grid-cols-4 .w-12.h-12 { width: 36px !important; height: 36px !important; font-size: 15px !important; }
+
+            /* Hai cột dưới (vi phạm / AI) xếp dọc 1 cột */
+            #tab-dashboard .grid.grid-cols-1.lg\:grid-cols-2 { grid-template-columns: 1fr !important; }
+
+            /* --- Danh sách vi phạm & giám sát: giới hạn chiều cao, cuộn trong khung --- */
+            #dashboard-violations-list,
+            #monthly-plan-progress-container,
+            #dashboard-ai-insights {
+                max-height: 240px;
+                overflow-y: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            /* --- Bảng cuộn ngang được, không vỡ layout --- */
+            .tab-content table { display: block; overflow-x: auto; white-space: nowrap; }
+
+            /* Các thanh công cụ, nút nhỏ lại chút cho gọn */
+            .tab-content .flex.flex-wrap.gap-3 > button { font-size: 12px; padding: 6px 10px; }
+        }
+        /* Nút hamburger ẩn trên desktop */
+        #hamburger-btn { display: none; }
+        /* ===== CHẾ ĐỘ SÁNG DỊU (bật bằng class 'light' trên body) =====
+        Dùng filter đảo màu nhẹ + chỉnh sắc để nền tối thành nền sáng dịu, không chói.
+        Ảnh và biểu tượng được đảo ngược lại để giữ màu thật. */
+        /* Chế độ sáng: áp filter lên VÙNG NỘI DUNG, KHÔNG áp lên body
+           (tránh làm hỏng position:fixed của sidebar & nút hamburger trên mobile). */
+        body.light { background: #eef1f6; }
+        body.light main,
+        body.light aside.w-72,
+        body.light .print-only { filter: invert(0.92) hue-rotate(180deg); }
+        body.light img, body.light .fa-solid, body.light .fa-regular, body.light .fa-brands,
+        body.light i, body.light svg { filter: invert(1) hue-rotate(180deg); }
+        /* Header giữ nền tối riêng để nút hamburger không bị filter che chạm */
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col">
+
+    <!-- GIAO DIỆN CHÍNH (no-print) -->
+    <div class="flex flex-1 no-print">
+        <div id="sidebar-overlay" onclick="closeSidebar()"></div>
+        
+        <!-- SIDEBAR -->
+        <aside class="w-72 bg-slate-950 border-r border-slate-800 flex flex-col justify-between shrink-0">
+            <div>
+                <!-- Logo / Header thương hiệu -->
+                <div class="p-6 border-b border-slate-800 flex items-center space-x-3">
+                    <div class="w-10 h-10 rounded-lg bg-amber-500 flex items-center justify-center text-slate-950 font-bold text-xl shadow-lg shadow-amber-500/20">
+                        <i class="fa-solid fa-gas-pump"></i>
+                    </div>
+                    <div>
+                        <h1 class="font-bold text-base leading-tight tracking-wider text-amber-400">THỦ THIÊM FAMS</h1>
+                        <span class="text-xs text-slate-400">Hệ thống Cấp phát Tự động</span>
+                    </div>
+                </div>
+
+                <!-- Thanh chọn ngày làm việc toàn cục -->
+                <div class="p-4 bg-slate-900/50 border-b border-slate-800/80">
+                    <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Tháng làm việc</label>
+                    <div class="relative">
+                        <input type="month" id="global-date" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors">
+                    </div>
+                </div>
+
+                <!-- Menu điều hướng -->
+                <nav class="p-4 space-y-1.5">
+                    <button onclick="switchTab('dashboard')" id="nav-dashboard" class="nav-btn w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium transition-all text-amber-400 bg-slate-800/60 shadow-sm">
+                        <i class="fa-solid fa-chart-line w-5 text-center"></i>
+                        <span>Bảng tổng quan</span>
+                    </button>
+                    <button onclick="switchTab('vehicles')" id="nav-vehicles" class="nav-btn w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium transition-all text-slate-400 hover:text-slate-100 hover:bg-slate-800/40">
+                        <i class="fa-solid fa-truck w-5 text-center"></i>
+                        <span>Phương tiện & Định mức</span>
+                    </button>
+                    <button onclick="switchTab('operation-plans')" id="nav-operation-plans" class="nav-btn w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium transition-all text-slate-400 hover:text-slate-100 hover:bg-slate-800/40">
+                        <i class="fa-solid fa-calendar-check w-5 text-center"></i>
+                        <span>Kế hoạch Vận hành</span>
+                    </button>
+                    <button onclick="switchTab('operation-logs')" id="nav-operation-logs" class="nav-btn w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium transition-all text-slate-400 hover:text-slate-100 hover:bg-slate-800/40">
+                        <i class="fa-solid fa-clipboard-list w-5 text-center"></i>
+                        <span>Nhật ký Vận hành</span>
+                    </button>
+                    <button onclick="switchTab('invoices')" id="nav-invoices" class="nav-btn w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium transition-all text-slate-400 hover:text-slate-100 hover:bg-slate-800/40">
+                        <i class="fa-solid fa-file-invoice-dollar w-5 text-center"></i>
+                        <span>Hóa đơn Mua vào</span>
+                    </button>
+                    <button onclick="switchTab('allocation')" id="nav-allocation" class="nav-btn w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium transition-all text-slate-400 hover:text-slate-100 hover:bg-slate-800/40">
+                        <i class="fa-solid fa-calculator w-5 text-center"></i>
+                        <span>Phân bổ & Đối soát</span>
+                    </button>
+                    <button onclick="switchTab('summary')" id="nav-summary" class="nav-btn w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium transition-all text-slate-400 hover:text-slate-100 hover:bg-slate-800/40">
+                        <i class="fa-solid fa-table w-5 text-center"></i>
+                        <span>Báo cáo Tổng hợp</span>
+                    </button>
+                    <button onclick="switchTab('reports')" id="nav-reports" class="nav-btn w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium transition-all text-slate-400 hover:text-slate-100 hover:bg-slate-800/40">
+                        <i class="fa-solid fa-print w-5 text-center"></i>
+                        <span>In Phiếu & Báo cáo</span>
+                    </button>
+                    <button onclick="switchTab('settings')" id="nav-settings" class="nav-btn w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium transition-all text-slate-400 hover:text-slate-100 hover:bg-slate-800/40">
+                        <i class="fa-solid fa-sliders w-5 text-center"></i>
+                        <span>Cấu hình Hệ thống</span>
+                    </button>
+                </nav>
+            </div>
+
+            <!-- Footer Sidebar -->
+            <div class="p-4 border-t border-slate-800 text-xs text-slate-500">
+                <div class="flex justify-between items-center">
+                    <span>Phiên bản 4.2 Pro</span>
+                    <span class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                </div>
+                <p class="mt-1">TANDIGITAL © 2026</p>
+            </div>
+        </aside>
+
+        <!-- MAIN WINDOW CONTAINER -->
+        <main class="flex-1 flex flex-col overflow-y-auto bg-slate-900">
+            
+            <!-- HEADER -->
+            <header class="h-16 border-b border-slate-800 px-8 flex items-center justify-between bg-slate-950/40 shrink-0">
+                <div class="flex items-center space-x-4">
+                    <button id="hamburger-btn" onclick="toggleSidebar()" class="items-center justify-center w-9 h-9 rounded-lg bg-slate-800 text-amber-400 border border-slate-700"><i class="fa-solid fa-bars"></i></button>
+                    <button onclick="toggleTheme()" title="Đổi giao diện Sáng/Tối" class="items-center justify-center w-9 h-9 rounded-lg bg-slate-800 text-amber-400 border border-slate-700"><i class="fa-solid fa-circle-half-stroke"></i></button>
+                    <h2 id="view-title" class="text-lg font-bold text-slate-100">Bảng tổng quan</h2>
+                    <span class="text-xs px-2.5 py-1 rounded bg-slate-800 text-slate-400 border border-slate-700" id="current-date-badge">Tháng: --/----</span>
+                </div>
+                <div class="flex items-center space-x-3">
+                    <button onclick="openImportModal()" class="flex items-center space-x-2 bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2 rounded-lg text-sm border border-slate-700 transition-colors">
+                        <i class="fa-solid fa-file-import text-amber-400"></i>
+                        <span>Nhập Excel</span>
+                    </button>
+                    <button onclick="runAllocationEngine()" class="flex items-center space-x-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 px-4 py-2 rounded-lg text-sm font-bold shadow-lg shadow-amber-500/10 transition-all">
+                        <i class="fa-solid fa-bolt"></i>
+                        <span>Chạy Phân bổ</span>
+                    </button>
+                </div>
+            </header>
+
+            <!-- VIEW PORTS -->
+            <div class="p-8 flex-1">
+                
+                <!-- TAB 1: DASHBOARD -->
+                <div id="tab-dashboard" class="tab-content space-y-6">
+                    <!-- Thẻ thống kê nhanh -->
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                        <div class="bg-slate-950/60 border border-slate-800 p-5 rounded-xl flex items-center justify-between">
+                            <div>
+                                <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Tổng phương tiện</span>
+                                <p class="text-3xl font-bold mt-1 text-slate-100" id="stat-vehicles-count">0</p>
+                            </div>
+                            <div class="w-12 h-12 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-400 text-xl"><i class="fa-solid fa-truck-monster"></i></div>
+                        </div>
+                        <div class="bg-slate-950/60 border border-slate-800 p-5 rounded-xl flex items-center justify-between">
+                            <div>
+                                <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Số ca vận hành hôm nay</span>
+                                <p class="text-3xl font-bold mt-1 text-slate-100" id="stat-shifts-count">0</p>
+                            </div>
+                            <div class="w-12 h-12 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-400 text-xl"><i class="fa-solid fa-business-time"></i></div>
+                        </div>
+                        <div class="bg-slate-950/60 border border-slate-800 p-5 rounded-xl flex items-center justify-between">
+                            <div>
+                                <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Tổng Dầu nhập hóa đơn</span>
+                                <p class="text-3xl font-bold mt-1 text-slate-100" id="stat-do-qty">0 Lít</p>
+                            </div>
+                            <div class="w-12 h-12 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-400 text-xl"><i class="fa-solid fa-droplet"></i></div>
+                        </div>
+                        <div class="bg-slate-950/60 border border-slate-800 p-5 rounded-xl flex items-center justify-between">
+                            <div>
+                                <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Cảnh báo vi phạm</span>
+                                <p class="text-3xl font-bold mt-1 text-rose-500" id="stat-violations-count">0</p>
+                            </div>
+                            <div class="w-12 h-12 rounded-lg bg-rose-500/10 flex items-center justify-center text-rose-400 text-xl"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                        </div>
+                    </div>
+
+                    <!-- Tiến độ kế hoạch tháng -->
+                    <div class="bg-slate-950/40 border border-slate-800 rounded-xl p-6">
+                        <h3 class="font-bold text-slate-200 mb-4 flex items-center space-x-2">
+                            <i class="fa-solid fa-chart-bar text-amber-400"></i>
+                            <span>Giám sát Kế hoạch Nhiên liệu Tháng này</span>
+                        </h3>
+                        <div id="monthly-plan-progress-container" class="space-y-4">
+                            <!-- JS render bars here -->
+                        </div>
+                    </div>
+
+                    <!-- Danh sách vi phạm ràng buộc & Cảnh báo AI -->
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div class="bg-slate-950/40 border border-slate-800 rounded-xl p-6 flex flex-col">
+                            <h3 class="font-bold text-slate-200 mb-4 flex items-center justify-between">
+                                <span class="flex items-center space-x-2">
+                                    <i class="fa-solid fa-shield-halved text-rose-500"></i>
+                                    <span>Vi phạm ràng buộc phát hiện hôm nay</span>
+                                </span>
+                                <span class="text-xs bg-rose-500/10 text-rose-400 px-2 py-0.5 rounded border border-rose-500/20" id="violation-badge">0 lỗi</span>
+                            </h3>
+                            <div class="flex-1 overflow-y-auto max-h-60 space-y-3" id="dashboard-violations-list">
+                                <!-- JS render violations -->
+                            </div>
+                        </div>
+
+                        <div class="bg-slate-950/40 border border-slate-800 rounded-xl p-6 flex flex-col">
+                            <h3 class="font-bold text-slate-200 mb-4 flex items-center space-x-2">
+                                <i class="fa-solid fa-robot text-purple-400"></i>
+                                <span>AI Trợ lý - Nhật ký & Đối soát</span>
+                            </h3>
+                            <div class="flex-1 space-y-3" id="dashboard-ai-insights">
+                                <div class="p-4 bg-slate-900/80 border border-slate-800 rounded-lg text-sm text-slate-300">
+                                    <p class="font-semibold text-amber-400 mb-1"><i class="fa-solid fa-wand-magic-sparkles mr-2"></i>Tự động hóa thông minh</p>
+                                    Hệ thống sẵn sàng phân bổ ngược định mức từ hóa đơn thực tế. Chọn ngày và bấm nút <strong>"Chạy Phân bổ"</strong> ở góc trên để bắt đầu quy trình.
+                                </div>
+                                <div class="p-4 bg-slate-900/80 border border-slate-800 rounded-lg text-sm text-slate-300">
+                                    <p class="font-semibold text-purple-400 mb-1"><i class="fa-solid fa-brain mr-2"></i>Nhật ký ca máy AI</p>
+                                    Sau khi phân bổ, AI sẽ tự động soạn thảo nhật ký máy chi tiết phù hợp với định mức tiêu thụ thực tế để lưu hồ sơ nghiệm thu.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 2: VEHICLES -->
+                <div id="tab-vehicles" class="tab-content hidden space-y-6">
+                    <div class="flex justify-between items-center">
+                        <h3 class="font-bold text-lg text-slate-200">Danh mục Phương tiện & Định mức</h3>
+                        <button onclick="openVehicleModal()" class="bg-amber-500 hover:bg-amber-600 text-slate-950 px-4 py-2 rounded-lg text-sm font-semibold transition-colors">
+                            <i class="fa-solid fa-plus mr-1.5"></i>Thêm phương tiện
+                        </button>
+                    </div>
+                    <div class="bg-slate-950/40 border border-slate-800 rounded-xl overflow-hidden">
+                        <table class="w-full text-left text-sm text-slate-300">
+                            <thead class="bg-slate-900 text-slate-400 uppercase text-xs tracking-wider border-b border-slate-800">
+                                <tr>
+                                    <th class="px-6 py-4 text-center">STT</th>
+                                    <th class="px-6 py-4">Mã định danh</th>
+                                    <th class="px-6 py-4">Biển số xe</th>
+                                    <th class="px-6 py-4">Nhiên liệu</th>
+                                    <th class="px-6 py-4 text-right">Định mức/Ca (Lít)</th>
+                                    <th class="px-6 py-4 text-center">Ca Min-Max/Tháng</th>
+                                    <th class="px-6 py-4 text-right">Kế hoạch Tháng (Lít)</th>
+                                    <th class="px-6 py-4">Công trình liên kết</th>
+                                    <th class="px-6 py-4 text-center">Hành động</th>
+                                </tr>
+                            </thead>
+                            <tbody id="vehicles-table-body" class="divide-y divide-slate-800/60">
+                                <!-- JS render vehicles -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <!-- TAB: KẾ HOẠCH VẬN HÀNH -->
+                <div id="tab-operation-plans" class="tab-content hidden space-y-6">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <h3 class="font-bold text-lg text-slate-200">Kế hoạch Vận hành hàng tháng</h3>
+                            <p class="text-xs text-slate-400 mt-1">Số ca dự kiến cho từng xe/ngày. Đây là dữ liệu kế hoạch để chạy phân bổ nhiên liệu. Ô trống = nghỉ.</p>
+                        </div>
+                    </div>
+                    <div class="bg-slate-950/40 border border-slate-800 rounded-xl p-4 flex flex-wrap gap-3 items-end">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-400 mb-1">Tháng kế hoạch</label>
+                            <input type="month" id="plan-month" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white">
+                        </div>
+                        <button onclick="renderPlanMatrix()" class="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm"><i class="fa-solid fa-table-cells mr-1"></i>Hiển thị bảng</button>
+                        <button onclick="runAutoPlan()" class="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white px-4 py-2 rounded-lg text-sm font-bold" title="Tự động điền số ca dự kiến từ hóa đơn thực tế để xem trước bức tranh kế hoạch"><i class="fa-solid fa-wand-magic-sparkles mr-1"></i>Chạy kế hoạch tự động</button>
+                        <button onclick="savePlanMatrix()" class="bg-amber-500 hover:bg-amber-600 text-slate-950 px-4 py-2 rounded-lg text-sm font-bold"><i class="fa-solid fa-floppy-disk mr-1"></i>Lưu kế hoạch</button>
+                        <button onclick="downloadTemplate('KE_HOACH_NGANG')" class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-lg text-xs font-semibold"><i class="fa-solid fa-download mr-1"></i>Tải mẫu kế hoạch</button>
+                        <button onclick="exportPlanMatrix()" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-lg text-xs font-semibold"><i class="fa-solid fa-file-excel mr-1"></i>Xuất kế hoạch</button>
+                        <button onclick="resetPlanMatrix()" class="bg-rose-600 hover:bg-rose-500 text-white px-3 py-2 rounded-lg text-xs font-semibold"><i class="fa-solid fa-eraser mr-1"></i>Reset kế hoạch tháng</button>
+                    </div>
+                    <div id="plan-notes-container" class="hidden bg-slate-950/40 border border-slate-800 rounded-xl p-4 space-y-2"></div>
+                    <div class="bg-slate-950/40 border border-slate-800 rounded-xl p-4 overflow-x-auto" id="plan-matrix-container">
+                        <p class="text-slate-500 text-sm">Chọn tháng rồi bấm "Hiển thị bảng" để nhập kế hoạch. Gõ số ca vào ô (VD: 2 hoặc 1.5), để trống nếu nghỉ.</p>
+                    </div>
+                </div>
+
+                <!-- TAB 3: OPERATION LOGS -->
+                <div id="tab-operation-logs" class="tab-content hidden space-y-6">
+                    <div class="flex justify-between items-center">
+                        <h3 class="font-bold text-lg text-slate-200">Nhật ký Vận hành Máy thi công</h3>
+                        <p class="text-xs text-slate-400 mt-1">Điền số ca vận hành cho từng xe/ngày. Đây là CĂN CỨ để chạy phân bổ nhiên liệu. Ô trống = nghỉ.</p>
+                        <button onclick="openLogModal()" class="bg-amber-500 hover:bg-amber-600 text-slate-950 px-4 py-2 rounded-lg text-sm font-semibold transition-colors">
+                            <i class="fa-solid fa-plus mr-1.5"></i>Ghi nhận số ca
+                        </button>
+                    </div>
+                    <div class="bg-slate-950/40 border border-slate-800 rounded-xl p-4 flex flex-wrap gap-3 items-end">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-400 mb-1">Từ ngày</label>
+                            <input type="date" id="log-from" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-400 mb-1">Đến ngày</label>
+                            <input type="date" id="log-to" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-400 mb-1">Chọn nhanh tháng</label>
+                            <input type="month" id="log-month" onchange="pickLogMonth()" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white">
+                        </div>
+                        <button onclick="renderLogMatrix()" class="bg-amber-500 hover:bg-amber-600 text-slate-950 px-4 py-2 rounded-lg text-sm font-bold"><i class="fa-solid fa-table-cells mr-1"></i>Xem chấm công</button>
+                        <button onclick="saveLogMatrix()" class="bg-amber-500 hover:bg-amber-600 text-slate-950 px-4 py-2 rounded-lg text-sm font-bold"><i class="fa-solid fa-floppy-disk mr-1"></i>Lưu chấm công</button>
+                        <button onclick="resetLogsData(getVal('log-from') ? getVal('log-from').slice(0,7) : '')" class="bg-rose-600 hover:bg-rose-500 text-white px-3 py-2 rounded-lg text-xs font-semibold"><i class="fa-solid fa-eraser mr-1"></i>Reset chấm công tháng</button>
+                        <button onclick="downloadTemplate('VAN_HANH_NGANG')" class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-lg text-xs font-semibold"><i class="fa-solid fa-download mr-1"></i>Tải mẫu chấm công</button>
+                        <button onclick="exportLogMatrix()" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-lg text-xs font-semibold"><i class="fa-solid fa-file-excel mr-1"></i>Xuất chấm công</button>
+                    </div>
+                    <div class="bg-slate-950/40 border border-slate-800 rounded-xl p-4 overflow-x-auto" id="log-matrix-container">
+                        <p class="text-slate-500 text-sm">Chọn khoảng ngày rồi bấm "Xem chấm công" để xem dạng bảng ngang. Ô có số = số ca; ô trống = nghỉ.</p>
+                    </div>
+                    <div class="bg-slate-950/40 border border-slate-800 rounded-xl overflow-hidden hidden">
+                        <table class="w-full text-left text-sm text-slate-300">
+                            <thead class="bg-slate-900 text-slate-400 uppercase text-xs tracking-wider border-b border-slate-800">
+                                <tr>
+                                    <th class="px-6 py-4">Phương tiện</th>
+                                    <th class="px-6 py-4">Ngày vận hành</th>
+                                    <th class="px-6 py-4 text-center">Ca bắt đầu</th>
+                                    <th class="px-6 py-4 text-center">Ca kết thúc</th>
+                                    <th class="px-6 py-4 text-right">Tổng số ca thực tế</th>
+                                    <th class="px-6 py-4 text-center">Hành động</th>
+                                </tr>
+                            </thead>
+                            <tbody id="operation-logs-table-body" class="divide-y divide-slate-800/60">
+                                <!-- JS render logs -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- TAB 4: INVOICES -->
+                <div id="tab-invoices" class="tab-content hidden space-y-6">
+                    <div class="flex justify-between items-center">
+                        <h3 class="font-bold text-lg text-slate-200">Danh sách Hóa đơn Nhiên liệu Mua vào</h3>
+                        <button onclick="openInvoiceModal()" class="bg-amber-500 hover:bg-amber-600 text-slate-950 px-4 py-2 rounded-lg text-sm font-semibold transition-colors">
+                            <i class="fa-solid fa-plus mr-1.5"></i>Thêm hóa đơn mới
+                        </button>
+                    </div>
+                    <div class="bg-slate-950/40 border border-slate-800 rounded-xl overflow-hidden">
+                        <table class="w-full text-left text-sm text-slate-300">
+                            <thead class="bg-slate-900 text-slate-400 uppercase text-xs tracking-wider border-b border-slate-800">
+                                <tr>
+                                    <th class="px-6 py-4">Mã hóa đơn</th>
+                                    <th class="px-6 py-4">Ngày hóa đơn</th>
+                                    <th class="px-6 py-4">Nhà cung cấp</th>
+                                    <th class="px-6 py-4">Loại dầu/xăng</th>
+                                    <th class="px-6 py-4 text-right">Số lượng (Lít)</th>
+                                    <th class="px-6 py-4 text-right">Đơn giá (VND/Lít)</th>
+                                    <th class="px-6 py-4 text-right">Thành tiền (VND)</th>
+                                    <th class="px-6 py-4">Địa điểm nhận</th>
+                                    <th class="px-6 py-4">Mã công trình</th>    
+                                    <th class="px-6 py-4 text-center">Hành động</th>
+                                </tr>
+                            </thead>
+                            <tbody id="invoices-table-body" class="divide-y divide-slate-800/60">
+                                <!-- JS render invoices -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- TAB 5: ALLOCATION -->
+                <div id="tab-allocation" class="tab-content hidden space-y-6">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <h3 class="font-bold text-lg text-slate-200">Động cơ Phân bổ & Kiểm soát Ràng buộc</h3>
+                            <p class="text-xs text-slate-400 mt-1">Phân bổ có trọng số dựa trên định mức lý thuyết và hóa đơn mua thực tế</p>
+                        </div>
+                        <div class="flex items-center space-x-3">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-400 mb-1">Tháng phân bổ</label>
+                                <input type="month" id="alloc-month" onchange="onAllocMonthChange()" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white">
+                            </div>
+                            <button onclick="runAllocationEngine('DRAIN')" class="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 px-4 py-2.5 rounded-lg text-sm font-bold shadow-lg transition-all mt-5" title="Rót hết 100% hóa đơn từng kho, số ca suy ngược">
+                                <i class="fa-solid fa-fill-drip mr-1.5"></i>PA1: Vét cạn kho
+                            </button>
+                            <button onclick="runAllocationEngine('STOCK')" class="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white px-4 py-2.5 rounded-lg text-sm font-bold shadow-lg transition-all mt-5" title="Giữ định mức, có tồn kho chuyển ngày sau">
+                                <i class="fa-solid fa-warehouse mr-1.5"></i>PA2: Kho tồn
+                            </button>
+                            <div class="mt-5 flex flex-col justify-center bg-slate-900/60 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-300" title="Áp dụng cho PA3 khi thiếu dầu">
+                                <span class="text-slate-400 font-semibold mb-0.5">Khi thiếu dầu (PA3):</span>
+                                <label class="flex items-center gap-1.5 cursor-pointer"><input type="radio" name="pa3-mode" value="STT" checked class="accent-purple-500"><span>Ưu tiên theo STT</span></label>
+                                <label class="flex items-center gap-1.5 cursor-pointer"><input type="radio" name="pa3-mode" value="RATIO" class="accent-purple-500"><span>Chia theo tỷ lệ</span></label>
+                            </div>
+                            <button onclick="runAllocationEngine('ROLLING')" class="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white px-4 py-2.5 rounded-lg text-sm font-bold shadow-lg transition-all mt-5" title="Kho luân chuyển theo ngày: tạm ứng khi thiếu >10%, chia tỷ lệ khi thiếu <=10%">
+                                <i class="fa-solid fa-arrows-spin mr-1.5"></i>PA3: Luân chuyển ngày
+                            </button>
+                            <button onclick="runAllocationEngine('SCALED')" class="bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 text-white px-4 py-2.5 rounded-lg text-sm font-bold shadow-lg transition-all mt-5" title="Rải đều theo hệ số: mỗi ngày cấp = nhu cầu × (tổng dầu/tổng nhu cầu). Nhập = Xuất tuyệt đối, mượt nhất.">
+                                <i class="fa-solid fa-scale-balanced mr-1.5"></i>PA4: Rải đều hệ số
+                            </button>
+                            <button onclick="resetAllocation()" class="bg-slate-700 hover:bg-rose-600 text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-all mt-5" title="Xóa toàn bộ kết quả phân bổ tháng này">
+                                <i class="fa-solid fa-eraser mr-1.5"></i>Reset
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Step-by-step Math Explainers -->
+                    <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-6">
+                        <h4 class="font-semibold text-slate-300 mb-3 flex items-center space-x-2">
+                            <i class="fa-solid fa-circle-info text-amber-400"></i>
+                            <span>Công thức phân bổ ngược trọng số áp dụng:</span>
+                        </h4>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-slate-400">
+                            <div class="bg-slate-900/60 p-4 border border-slate-800 rounded-lg">
+                                <span class="font-bold text-slate-300 block mb-1">1. Định mức Lý thuyết</span>
+                                <code class="text-amber-400">ĐM_LýThuyết = ĐịnhMức_Ca × SốCaThựcTế</code>
+                            </div>
+                            <div class="bg-slate-900/60 p-4 border border-slate-800 rounded-lg">
+                                <span class="font-bold text-slate-300 block mb-1">2. Tỷ lệ Phân bổ</span>
+                                <code class="text-amber-400">Lượng_Cấp = (ĐM_LýThuyết / Tổng_ĐM_LýThuyết) × Tổng_HóaĐơn</code>
+                            </div>
+                            <div class="bg-slate-900/60 p-4 border border-slate-800 rounded-lg">
+                                <span class="font-bold text-slate-300 block mb-1">3. Điều chỉnh Số dư</span>
+                                <code class="text-amber-400">Bù sai số làm tròn vào xe có ĐM_LýThuyết cao nhất</code>
+                            </div>
+                        </div>
+                    </div>
+
+                                        <!-- Bảng Nhập - Xuất - Tồn theo ngày -->
+                    <div class="bg-slate-950/40 border border-slate-800 rounded-xl overflow-hidden">
+                        <div class="p-4 bg-slate-900/80 border-b border-slate-800 flex justify-between items-center">
+                            <span class="font-bold text-slate-300"><i class="fa-solid fa-warehouse text-amber-400 mr-2"></i>Sổ Nhập - Xuất - Tồn theo ngày (Đối soát: Hóa đơn = Phân bổ + Tồn)</span>
+                            <button onclick="saveStockLedger()" class="bg-amber-500 hover:bg-amber-600 text-slate-950 px-3 py-1.5 rounded-lg text-xs font-bold"><i class="fa-solid fa-floppy-disk mr-1"></i>Lưu sổ kho kỳ này</button>
+                            <button onclick="exportStockLedger()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold"><i class="fa-solid fa-file-excel mr-1"></i>Xuất Excel</button>
+                        </div>
+                        <div class="overflow-x-auto max-h-96">
+                            <table class="w-full text-left text-sm text-slate-300">
+                                <thead class="bg-slate-900/50 text-slate-400 uppercase text-xs tracking-wider border-b border-slate-800 sticky top-0">
+                                    <tr>
+                                        <th class="px-4 py-3">Ngày</th>
+                                        <th class="px-4 py-3">Nhiên liệu</th>
+                                        <th class="px-4 py-3">Công trình</th>
+                                        <th class="px-4 py-3 text-right">Tồn đầu</th>
+                                        <th class="px-4 py-3 text-right text-emerald-400">Nhập (HĐ)</th>
+                                        <th class="px-4 py-3 text-right text-amber-400">Xuất (Phân bổ)</th>
+                                        <th class="px-4 py-3 text-right text-blue-400">Tồn cuối</th>
+                                        <th class="px-4 py-3 text-right text-rose-400">Còn nợ</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="stock-ledger-body" class="divide-y divide-slate-800/60">
+                                    <!-- JS render -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Bảng kết quả phân bổ -->
+                    <div class="bg-slate-950/40 border border-slate-800 rounded-xl overflow-hidden">
+                        <div class="p-4 bg-slate-900/60 border-b border-slate-800 flex flex-wrap gap-3 items-end">
+                            <div><label class="block text-xs font-semibold text-slate-400 mb-1">Từ ngày</label><input type="date" id="alloc-from" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-white"></div>
+                            <div><label class="block text-xs font-semibold text-slate-400 mb-1">Đến ngày</label><input type="date" id="alloc-to" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-white"></div>
+                            <div><label class="block text-xs font-semibold text-slate-400 mb-1">Phương tiện</label><select id="alloc-f-vehicle" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-white"><option value="">Tất cả</option></select></div>
+                            <div><label class="block text-xs font-semibold text-slate-400 mb-1">Nhiên liệu</label><select id="alloc-f-fuel" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-white"><option value="">Tất cả</option><option value="DO">Dầu DO</option><option value="A95">Xăng A95</option></select></div>
+                            <div><label class="block text-xs font-semibold text-slate-400 mb-1">Nhà cung cấp</label><select id="alloc-f-supplier" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-white"><option value="">Tất cả</option></select></div>
+                            <button onclick="applyAllocFilter()" class="bg-amber-500 hover:bg-amber-600 text-slate-950 px-4 py-1.5 rounded-lg text-sm font-bold"><i class="fa-solid fa-magnifying-glass mr-1"></i>Lọc</button>
+                            <button onclick="clearAllocFilter()" class="bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded-lg text-sm"><i class="fa-solid fa-rotate-left mr-1"></i>Bỏ lọc</button>
+                        </div>
+                        <div class="p-4 bg-slate-900/80 border-b border-slate-800 flex justify-between items-center flex-wrap gap-2">
+                            <span class="font-bold text-slate-300">Bảng chi tiết phân bổ cả tháng (sửa tay ô Phân bổ thực tế rồi bấm Lưu)</span>
+                            <div class="flex items-center gap-3">
+                                <span id="allocation-summary-badge" class="text-xs bg-slate-800 text-slate-300 px-3 py-1 rounded border border-slate-700">Chưa tính toán</span>
+                                <button onclick="saveAllocationsEdits()" class="bg-amber-500 hover:bg-amber-600 text-slate-950 px-4 py-1.5 rounded-lg text-xs font-bold"><i class="fa-solid fa-floppy-disk mr-1"></i>Lưu kết quả kỳ này</button>
+                                <button onclick="exportAllocations()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold"><i class="fa-solid fa-file-excel mr-1"></i>Xuất Excel</button>
+                            </div>
+                        </div>
+                        <table class="w-full text-left text-sm text-slate-300">
+                            <thead class="bg-slate-900/50 text-slate-400 uppercase text-xs tracking-wider border-b border-slate-800">
+                                <tr>
+                                    <th class="px-6 py-4">Ngày</th>
+                                    <th class="px-6 py-4">Xe / Thiết bị</th>
+                                    <th class="px-6 py-4">Công trình</th>
+                                    <th class="px-6 py-4">Nhiên liệu</th>
+                                    <th class="px-6 py-4 text-right">Định mức/Ca</th>
+                                    <th class="px-6 py-4 text-center">Số ca vận hành</th>
+                                    <th class="px-6 py-4 text-right">Định mức lý thuyết</th>
+                                    <th class="px-6 py-4 text-right text-amber-400">Phân bổ thực tế</th>
+                                    <th class="px-6 py-4 text-center">Cảnh báo/Bất thường</th>
+                                </tr>
+                            </thead>
+                            <tbody id="allocations-table-body" class="divide-y divide-slate-800/60">
+                                <!-- JS render allocations -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- TAB: BÁO CÁO TỔNG HỢP -->
+                <div id="tab-summary" class="tab-content hidden space-y-6">
+                    <div class="bg-slate-950/40 border border-slate-800 rounded-xl p-4 flex flex-wrap gap-3 items-end">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-400 mb-1">Từ ngày</label>
+                            <input type="date" id="sum-from" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-400 mb-1">Đến ngày</label>
+                            <input type="date" id="sum-to" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-400 mb-1">Phương tiện</label>
+                            <select id="sum-vehicle" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"><option value="">Tất cả</option></select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-400 mb-1">Nhiên liệu</label>
+                            <select id="sum-fuel" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"><option value="">Tất cả</option><option value="DO">Dầu DO</option><option value="A95">Xăng A95</option></select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-400 mb-1">Nhà cung cấp</label>
+                            <select id="sum-supplier" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"><option value="">Tất cả</option></select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-400 mb-1">Chọn nhanh tháng</label>
+                            <input type="month" id="sum-month" onchange="pickSummaryMonth()" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white">
+                        </div>
+                        <button onclick="runSummary()" class="bg-amber-500 hover:bg-amber-600 text-slate-950 px-4 py-2 rounded-lg text-sm font-bold"><i class="fa-solid fa-magnifying-glass mr-1"></i>Xem</button>
+                    </div>
+
+                    <div class="flex flex-wrap gap-3">
+                        <button onclick="exportDetail()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-semibold"><i class="fa-solid fa-file-excel mr-1.5"></i>Xuất chi tiết (đối soát)</button>
+                        <button onclick="exportVertical()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-semibold"><i class="fa-solid fa-file-excel mr-1.5"></i>Xuất tổng hợp DỌC (ma trận ngày × xe)</button>
+                        <button onclick="exportHorizontal()" class="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-lg text-sm font-semibold"><i class="fa-solid fa-file-excel mr-1.5"></i>Xuất tổng hợp NGANG (chấm công)</button>
+                    </div>
+
+                    <div class="bg-slate-950/40 border border-slate-800 rounded-xl p-4 overflow-x-auto">
+                        <div id="summary-preview" class="text-sm text-slate-300"><p class="text-slate-500">Chọn khoảng ngày rồi bấm "Xem" để hiển thị bảng tổng hợp.</p></div>
+                    </div>
+                </div>
+
+                <!-- TAB 6: REPORTS -->
+                <div id="tab-reports" class="tab-content hidden space-y-6">
+                    <div class="flex justify-between items-center">
+                        <h3 class="font-bold text-lg text-slate-200">Chứng từ & Phiếu cấp Nhiên liệu</h3>
+                        <div class="flex space-x-3">
+                            <button onclick="printAllSlips()" class="bg-amber-500 hover:bg-amber-600 text-slate-950 px-4 py-2 rounded-lg text-sm font-semibold transition-colors">
+                                <i class="fa-solid fa-print mr-1.5"></i>In toàn bộ phiếu cấp tháng này
+                            </button>
+                            <button onclick="exportSlipsExcel()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors">
+                                <i class="fa-solid fa-file-excel mr-1.5"></i>Xuất Excel danh sách phiếu tháng
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <!-- Cột trái: Chọn xe để in lẻ -->
+                        <div class="bg-slate-950/40 border border-slate-800 rounded-xl p-6 space-y-4">
+                            <h4 class="font-bold text-slate-300 border-b border-slate-800 pb-2">In lẻ phiếu cấp</h4>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Chọn phương tiện</label>
+                                <select id="report-vehicle-select" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500">
+                                    <!-- JS render options -->
+                                </select>
+                            </div>
+                            <button onclick="printSingleSlip()" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 py-2.5 rounded-lg text-sm font-semibold border border-slate-700 transition-colors">
+                                <i class="fa-solid fa-file-pdf mr-1.5"></i>Xem & In Phiếu đã chọn
+                            </button>
+                        </div>
+
+                        <!-- Cột giữa: AI Soạn nhật ký tự động -->
+                        <div class="bg-slate-950/40 border border-slate-800 rounded-xl p-6 space-y-4 col-span-2">
+                            <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+                                <h4 class="font-bold text-slate-300">AI Viết Nhật Ký Ca Máy Tự Động</h4>
+                                <button onclick="generateAIDiary()" class="text-xs bg-purple-500/20 text-purple-300 border border-purple-500/40 px-2.5 py-1 rounded hover:bg-purple-500/30 transition-colors">
+                                    <i class="fa-solid fa-wand-magic-sparkles mr-1"></i>Tạo lại bằng AI
+                                </button>
+                            </div>
+                            <div id="ai-diary-output" class="space-y-3 max-h-80 overflow-y-auto pr-2">
+                                <!-- JS render AI generated diary cards -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 7: SETTINGS -->
+                <div id="tab-settings" class="tab-content hidden space-y-6">
+                    <h3 class="font-bold text-lg text-slate-200">Cấu hình Hệ thống & Danh mục bổ trợ</h3>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- Danh sách công trình -->
+                        <div class="bg-slate-950/40 border border-slate-800 rounded-xl p-6 space-y-4">
+                            <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+                                <h4 class="font-bold text-slate-300">Danh mục Công trình</h4>
+                                <button onclick="openProjectModal()" class="text-xs bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2.5 py-1 rounded hover:bg-amber-500/20">Thêm</button>
+                            </div>
+                            <div class="overflow-y-auto max-h-60">
+                                <table class="w-full text-left text-sm text-slate-300">
+                                    <thead class="bg-slate-900 text-slate-400 text-xs">
+                                        <tr>
+                                            <th class="p-2">Mã công trình</th>
+                                            <th class="p-2">Tên công trình</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="projects-table-body" class="divide-y divide-slate-800/60">
+                                        <!-- JS render projects -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Danh sách nhà cung cấp -->
+                        <div class="bg-slate-950/40 border border-slate-800 rounded-xl p-6 space-y-4">
+                            <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+                                <h4 class="font-bold text-slate-300">Danh mục Nhà cung cấp</h4>
+                                <button onclick="openSupplierModal()" class="text-xs bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2.5 py-1 rounded hover:bg-amber-500/20">Thêm</button>
+                            </div>
+                            <div class="overflow-y-auto max-h-60">
+                                <table class="w-full text-left text-sm text-slate-300">
+                                    <thead class="bg-slate-900 text-slate-400 text-xs">
+                                        <tr>
+                                            <th class="p-2">Mã NCC</th>
+                                            <th class="p-2">Tên nhà cung cấp</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="suppliers-table-body" class="divide-y divide-slate-800/60">
+                                        <!-- JS render suppliers -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Cấu hình các tham số nghiệp vụ -->
+                    <div class="bg-slate-950/40 border border-slate-800 rounded-xl p-6 space-y-4">
+                        <h4 class="font-bold text-slate-300 border-b border-slate-800 pb-2">Thông số thuật toán & Ngưỡng kiểm soát</h4>
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-400 mb-1">Cảnh báo Vàng kế hoạch (THRESHOLD_YELLOW)</label>
+                                <input type="number" step="0.01" id="cfg-yellow" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white" value="0.9">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-400 mb-1">Chặn Đỏ kế hoạch (THRESHOLD_RED)</label>
+                                <input type="number" step="0.01" id="cfg-red" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white" value="1.0">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-400 mb-1">Ngưỡng trên bất thường (ANOMALY_UPPER_LIMIT)</label>
+                                <input type="number" step="0.01" id="cfg-upper" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white" value="1.2">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-400 mb-1">Ngưỡng dưới bất thường (ANOMALY_LOWER_LIMIT)</label>
+                                <input type="number" step="0.01" id="cfg-lower" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white" value="0.8">
+                            </div>
+                        </div>
+                        <div class="flex justify-end pt-2">
+                            <button onclick="saveBusinessConfig()" class="bg-amber-500 hover:bg-amber-600 text-slate-950 px-5 py-2 rounded-lg text-sm font-semibold">Lưu thông số cấu hình</button>
+                        </div>
+                                            <!-- Thông tin Công ty / Xí nghiệp -->
+                    <div class="bg-slate-950/40 border border-slate-800 rounded-xl p-6 space-y-4">
+                        <h4 class="font-bold text-slate-300 border-b border-slate-800 pb-2">Thông tin Công ty / Xí nghiệp (dùng cho phiếu in)</h4>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                            <div class="md:col-span-2">
+                                <label class="block text-xs font-semibold text-slate-400 mb-1">Tên Công ty (dòng trên cùng phiếu)</label>
+                                <input type="text" id="cfg-company" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white" placeholder="CÔNG TY TNHH MỘT THÀNH VIÊN THOÁT NƯỚC ĐÔ THỊ TP.HCM">
+                            </div>
+                            <div class="md:col-span-2">
+                                <label class="block text-xs font-semibold text-slate-400 mb-1">Đơn vị (dòng "Đơn vị:")</label>
+                                <input type="text" id="cfg-unit" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white" placeholder="XNTN Thủ Thiêm">
+                            </div>
+                            <div class="md:col-span-2">
+                                <label class="block text-xs font-semibold text-slate-400 mb-1">Ghi chú chân phiếu</label>
+                                <input type="text" id="cfg-note" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white" value="(Phiếu có giá trị trong vòng 15 ngày kể từ ngày cấp)">
+                            </div>
+                        </div>
+                        <div class="flex justify-end pt-2">
+                            <button onclick="saveCompanyConfig()" class="bg-amber-500 hover:bg-amber-600 text-slate-950 px-5 py-2 rounded-lg text-sm font-semibold">Lưu thông tin công ty</button>
+                        </div>
+                    </div>
+
+                    <!-- Sao lưu & Phục hồi -->
+                    <div class="bg-slate-950/40 border border-slate-800 rounded-xl p-6 space-y-4">
+                        <h4 class="font-bold text-slate-300 border-b border-slate-800 pb-2">Sao lưu & Phục hồi dữ liệu</h4>
+                        <div class="flex flex-wrap gap-3 items-center">
+                            <button onclick="backupData()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-semibold"><i class="fa-solid fa-download mr-1.5"></i>Sao lưu (tải file JSON)</button>
+                            <button onclick="document.getElementById('restore-file').click()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-semibold"><i class="fa-solid fa-upload mr-1.5"></i>Phục hồi từ file JSON</button>
+                            <input type="file" id="restore-file" accept=".json" class="hidden" onchange="restoreData(this)">
+                        </div>
+                        <label class="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
+                            <input type="checkbox" id="cfg-autobackup" onchange="toggleAutoBackup(this.checked)" class="w-4 h-4 accent-amber-500">
+                            <span>Tự động sao lưu (tải file JSON mỗi lần mở ứng dụng)</span>
+                        </label>
+                        <p class="text-xs text-slate-500" id="last-backup-info">Chưa có lần sao lưu nào.</p>
+                    </div>
+                    <div class="bg-slate-950/40 border border-slate-800 rounded-xl p-6 space-y-4">
+                        <h4 class="font-bold text-slate-300 border-b border-slate-800 pb-2">Quản lý Kỳ (Tháng) & Xóa dữ liệu</h4>
+                        <p class="text-xs text-slate-400">Thao tác áp dụng cho tháng của <b>Ngày làm việc</b> đang chọn ở góc trái.</p>
+                        <div class="flex flex-wrap gap-3 items-center">
+                            <button onclick="clearCurrentMonth()" class="bg-rose-600 hover:bg-rose-500 text-white px-4 py-2 rounded-lg text-sm font-semibold"><i class="fa-solid fa-trash mr-1.5"></i>Xóa toàn bộ dữ liệu tháng này</button>
+                            <button onclick="toggleLockPeriod()" id="lock-btn" class="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm font-semibold"><i class="fa-solid fa-lock mr-1.5"></i>Khóa/Mở kỳ tháng này</button>
+                            <span id="lock-status" class="text-xs text-slate-400"></span>
+                        </div>
+                    </div>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- KHU VỰC IN PHIẾU CẤP NHIÊN LIỆU (Chỉ hiển thị khi in) -->
+    <div class="print-only bg-white text-black p-8 min-h-screen" id="print-area">
+        <!-- JS render content here dynamically for printing -->
+    </div>
+
+    <!-- MODALS KHU VỰC -->
+    
+    <!-- 1. Modal Thêm/Sửa Phương tiện -->
+    <div id="vehicle-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center hidden z-50">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl w-full max-w-lg p-6 space-y-4">
+            <h3 class="font-bold text-lg text-slate-100" id="vehicle-modal-title">Thêm phương tiện mới</h3>
+            <div class="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">Mã phương tiện</label>
+                    <input type="text" id="v-id" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">STT ưu tiên (số nhỏ ưu tiên trước)</label>
+                    <input type="number" id="v-priority" min="1" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white" placeholder="VD: 1">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">Biển số xe</label>
+                    <input type="text" id="v-plate" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">Loại nhiên liệu</label>
+                    <select id="v-fuel" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                        <option value="DO">Dầu</option>
+                        <option value="A95">Xăng</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">Định mức/Ca (Lít)</label>
+                    <input type="number" id="v-norm" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">Số ca tối thiểu/Tháng</label>
+                    <input type="number" id="v-min-shifts" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">Số ca tối đa/Tháng</label>
+                    <input type="number" id="v-max-shifts" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">Kế hoạch tháng (Lít)</label>
+                    <input type="number" id="v-plan" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">Công trình liên kết</label>
+                    <select id="v-project" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                        <!-- JS options -->
+                    </select>
+                </div>
+            </div>
+            <div class="flex justify-end space-x-3 pt-2">
+                <button onclick="closeVehicleModal()" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm">Hủy bỏ</button>
+                <button onclick="submitVehicleForm()" class="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 text-sm font-semibold">Lưu lại</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. Modal Thêm/Sửa Nhật ký Vận hành -->
+    <div id="log-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center hidden z-50">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl w-full max-w-md p-6 space-y-4">
+            <h3 class="font-bold text-lg text-slate-100" id="log-modal-title">Ghi nhận số ca vận hành</h3>
+            <div class="space-y-3 text-sm">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">Chọn phương tiện</label>
+                    <select id="l-vehicle" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                        <!-- JS options -->
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">Ngày vận hành</label>
+                    <input type="date" id="l-date" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-400 mb-1">Từ ca (1, 2, 3)</label>
+                        <input type="number" id="l-from" min="1" max="3" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white" value="1">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-400 mb-1">Đến ca (1, 2, 3)</label>
+                        <input type="number" id="l-to" min="1" max="3" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white" value="1">
+                    </div>
+                </div>
+            </div>
+            <div class="flex justify-end space-x-3 pt-2">
+                <button onclick="closeLogModal()" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm">Hủy bỏ</button>
+                <button onclick="submitLogForm()" class="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 text-sm font-semibold">Lưu nhật ký</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3    <!-- 3. Modal Thêm/Sửa Hóa đơn -->
+    <div id="invoice-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center hidden z-50">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl w-full max-w-lg p-6 space-y-4">
+            <h3 class="font-bold text-lg text-slate-100" id="invoice-modal-title">Thêm hóa đơn nhiên liệu mới</h3>
+            <div class="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">Mã hóa đơn</label>
+                    <input type="text" id="inv-id" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">Ngày hóa đơn</label>
+                    <input type="date" id="inv-date" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">Nhà cung cấp</label>
+                    <select id="inv-supplier" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                        <!-- JS options -->
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">Loại nhiên liệu</label>
+                    <select id="inv-fuel" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                        <option value="DO">Dầu</option>
+                        <option value="A95">Xăng</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">Số lượng (Lít)</label>
+                    <input type="number" id="inv-quantity" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">Đơn giá (VND/Lít)</label>
+                    <input type="number" id="inv-unit-price" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                </div>
+                <div class="col-span-2">
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">Địa điểm nhận nhiên liệu</label>
+                    <input type="text" id="inv-location" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white mb-3" placeholder="VD: CHXD">
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">Công trình liên kết</label>
+                    <select id="inv-project" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                        <!-- JS options -->
+                    </select>
+                </div>
+            </div>
+            <div class="flex justify-end space-x-3 pt-2">
+                <button onclick="closeInvoiceModal()" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm">Hủy bỏ</button>
+                <button onclick="submitInvoiceForm()" class="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 text-sm font-semibold">Lưu hóa đơn</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. Modal Thêm Công trình -->
+    <div id="project-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center hidden z-50">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl w-full max-w-md p-6 space-y-4">
+            <h3 class="font-bold text-lg text-slate-100" id="project-modal-title">Thêm công trình mới</h3>
+            <div class="space-y-3 text-sm">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">Mã công trình</label>
+                    <input type="text" id="p-id" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">Tên công trình</label>
+                    <input type="text" id="p-name" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">Mô tả</label>
+                    <textarea id="p-desc" rows="3" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white resize-none"></textarea>
+                </div>
+            </div>
+            <div class="flex justify-end space-x-3 pt-2">
+                <button onclick="closeProjectModal()" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm">Hủy bỏ</button>
+                <button onclick="submitProjectForm()" class="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 text-sm font-semibold">Lưu lại</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 5. Modal Thêm Nhà cung cấp -->
+    <div id="supplier-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center hidden z-50">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl w-full max-w-md p-6 space-y-4">
+            <h3 class="font-bold text-lg text-slate-100" id="supplier-modal-title">Thêm nhà cung cấp mới</h3>
+            <div class="space-y-3 text-sm">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">Mã nhà cung cấp</label>
+                    <input type="text" id="s-id" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">Tên nhà cung cấp</label>
+                    <input type="text" id="s-name" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">Thông tin liên hệ</label>
+                    <textarea id="s-contact" rows="2" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white resize-none"></textarea>
+                </div>
+            </div>
+            <div class="flex justify-end space-x-3 pt-2">
+                <button onclick="closeSupplierModal()" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm">Hủy bỏ</button>
+                <button onclick="submitSupplierForm()" class="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 text-sm font-semibold">Lưu lại</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 6. Modal Import Excel -->
+    <div id="import-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center hidden z-50">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl w-full max-w-lg p-6 space-y-4">
+            <h3 class="font-bold text-lg text-slate-100">Import Dữ liệu từ File Excel</h3>
+            <p class="text-xs text-slate-400">Chọn KỲ (tháng), loại dữ liệu rồi tải file Excel. Lưu ý: import sẽ XÓA sạch dữ liệu loại đó của kỳ đã chọn trước khi nạp mới.</p>
+            <div class="space-y-3 text-sm">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">Kỳ (tháng) nạp dữ liệu <span class="text-rose-400">*bắt buộc</span></label>
+                    <input type="month" id="import-month" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">Loại dữ liệu</label>
+                    <select id="import-type" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                        <option value="DINH_MUC_KE_HOACH">Định mức & Kế hoạch phương tiện</option>
+                        <option value="KE_HOACH_NGANG">Kế hoạch vận hành - Bảng ngang (Chạy kế hoạch phân bổ)</option>
+                        <option value="VAN_HANH_NGANG">Nhật ký vận hành - Bảng ca ngang (Cơ sở phân bổ)</option>
+                        <option value="BANG_KE_HOA_DON">Bảng kê hóa đơn nhiên liệu</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">Chọn file Excel (.xlsx)</label>
+                    <input type="file" id="import-file" accept=".xlsx, .xls" class="w-full text-sm text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-amber-500/10 file:text-amber-400 hover:file:bg-amber-500/20">
+                </div>
+            </div>
+            <div class="flex justify-end space-x-3 pt-2">
+                <button onclick="closeImportModal()" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm">Hủy bỏ</button>
+                <button onclick="submitImportForm()" class="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 text-sm font-semibold">Tải lên & Import</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast-container" class="fixed top-6 right-6 space-y-3 z-50">
+        <!-- JS render toasts -->
+    </div>
+
+    <!-- Confirmation Dialog -->
+    <div id="confirm-dialog" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center hidden z-50">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl w-full max-w-sm p-6 space-y-4">
+            <h3 class="font-bold text-lg text-slate-100" id="confirm-title">Xác nhận hành động</h3>
+            <p class="text-sm text-slate-300" id="confirm-message">Bạn có chắc chắn muốn thực hiện hành động này?</p>
+            <div class="flex justify-end space-x-3 pt-2">
+                <button onclick="hideConfirmDialog()" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm">Hủy bỏ</button>
+                <button onclick="confirmAction()" class="px-4 py-2 rounded-lg bg-rose-500 hover:bg-rose-600 text-white text-sm font-semibold">Xác nhận</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center hidden z-50">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 flex items-center space-x-3">
+            <div class="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+            <span class="text-slate-300 font-medium" id="loading-text">Đang xử lý dữ liệu...</span>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="js/api.js"></script>
+    <script src="js/app.js"></script>
+    <script>
+        // DOM Ready: Khởi tạo ứng dụng khi trang tải xong
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeApp();
+        });
+    </script>
+</body>
+</html>
