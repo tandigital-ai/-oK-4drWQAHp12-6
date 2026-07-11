@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OmniTranscript AI - Ứng dụng Biên tập Nội dung Đa phương tiện Địa phương Đầu tiên</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+    /* Tùy chỉnh thanh cuộn */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(241, 241, 241, 0.5);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(197, 197, 197, 0.8);
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(150, 150, 150, 0.9);
+    }
+    /* Hiệu ứng nhấp nháy cho ghi âm */
+    @keyframes pulse-red {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.1); opacity: 0.7; }
+    }
+    .pulse-recording {
+      animation: pulse-red 1.5s infinite ease-in-out;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col transition-colors duration-300">
+
+  <!-- GIAO DIỆN CHÍNH SPA -->
+  <div id="app" class="flex flex-1 overflow-hidden h-screen">
+    
+    <!-- THANH SIDEBAR TRÁI: QUẢN LÝ DỰ ÁN & TIỆN ÍCH -->
+    <aside class="w-80 bg-slate-900 text-white flex flex-col border-r border-slate-800 z-10">
+      <!-- Logo & Bản quyền -->
+      <div class="p-5 border-b border-slate-800 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+          <div class="bg-indigo-600 p-2 rounded-lg text-white">
+            <i class="fa-solid fa-microphone-lines text-xl"></i>
+          </div>
+          <div>
+            <h1 class="font-bold text-lg leading-none tracking-tight">OmniTranscript</h1>
+            <span class="text-[10px] text-slate-400 font-semibold tracking-widest uppercase">AI Engine • By TDA</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Khối Trạng thái Vault (Khóa API) -->
+      <div class="p-4 bg-slate-800/50 border-b border-slate-800">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center space-x-2">
+            <i class="fa-solid fa-vault text-amber-500"></i>
+            <span class="text-xs font-medium text-slate-300">API Key Vault:</span>
+          </div>
+          <span id="vault-status-badge" class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30">
+            <i class="fa-solid fa-lock mr-1"></i>Đã Khóa
+          </span>
+        </div>
+        <div class="mt-3 flex gap-2">
+          <button id="btn-open-vault" class="flex-1 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-xs py-2 px-3 rounded font-medium transition flex items-center justify-center gap-1.5">
+            <i class="fa-solid fa-key"></i> Quản lý API Key
+          </button>
+        </div>
+      </div>
+
+      <!-- Hành động Chính -->
+      <div class="p-4">
+        <button id="btn-new-project" class="w-full bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white py-3 px-4 rounded-lg font-semibold text-sm transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/20">
+          <i class="fa-solid fa-circle-plus text-base"></i> Tạo Dự Án Mới
+        </button>
+      </div>
+
+      <!-- Danh sách Dự án -->
+      <div class="flex-1 overflow-y-auto px-4 pb-4">
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Danh sách dự án</span>
+          <span class="text-[11px] bg-slate-800 px-2 py-0.5 rounded text-slate-300 border border-slate-700/50" id="project-count">0</span>
+        </div>
+        
+        <!-- Container chứa các item dự án được render động -->
+        <div id="project-list" class="space-y-2">
+          <!-- Trạng thái trống -->
+          <div class="text-center py-8 text-slate-500 text-xs">
+            <i class="fa-regular fa-folder-open text-2xl mb-2 block"></i>
+            Chưa có dự án nào được tạo.
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer của Sidebar -->
+      <div class="p-4 border-t border-slate-800 bg-slate-950 flex items-center justify-between text-xs text-slate-400">
+        <button id="btn-open-settings" class="hover:text-white transition flex items-center gap-1">
+          <i class="fa-solid fa-sliders text-sm"></i> Cài đặt chung
+        </button>
+        <span class="text-[10px] text-slate-500">TDA © 2024</span>
+      </div>
+    </aside>
+
+    <!-- KHU VỰC LÀM VIỆC CHÍNH (WORKSPACE) -->
+    <main class="flex-1 flex flex-col overflow-hidden bg-slate-50">
+      
+      <!-- MÀN HÌNH CHỜ (WELCOME SCREEN) - Hiển thị khi chưa chọn dự án -->
+      <div id="welcome-screen" class="flex-1 flex flex-col items-center justify-center p-8 text-center">
+        <div class="max-w-2xl bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
+          <div class="w-20 h-20 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-inner">
+            <i class="fa-solid fa-wand-magic-sparkles text-4xl"></i>
+          </div>
+          <h2 class="text-2xl font-bold text-slate-800 mb-3">Chào mừng bạn đến với OmniTranscript AI</h2>
+          <p class="text-slate-600 text-sm mb-8 leading-relaxed">
+            Hệ thống biên tập nội dung đa phương tiện local-first mạnh mẽ nhất. Ghi âm trực tiếp hoặc tải lên file âm thanh/video, tự động cắt nhỏ (chunking), chạy đa luồng AI để phiên âm, dịch thuật, gán người nói và xuất bản chuyên nghiệp.
+          </p>
+          
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8 text-left">
+            <div class="p-4 bg-slate-50 rounded-xl border border-slate-100">
+              <i class="fa-solid fa-shield-halved text-indigo-600 text-lg mb-2 block"></i>
+              <h3 class="font-semibold text-sm text-slate-800 mb-1">Local-First & Bảo mật</h3>
+              <p class="text-xs text-slate-500">Mã hóa khóa API ngay tại trình duyệt của bạn với AES-GCM 256-bit.</p>
+            </div>
+            <div class="p-4 bg-slate-50 rounded-xl border border-slate-100">
+              <i class="fa-solid fa-server text-indigo-600 text-lg mb-2 block"></i>
+              <h3 class="font-semibold text-sm text-slate-800 mb-1">Đa Nhà Cung Cấp AI</h3>
+              <p class="text-xs text-slate-500">Tự động xoay vòng hoặc chuyển đổi giữa Gemini, Deepgram, WebSpeech...</p>
+            </div>
+            <div class="p-4 bg-slate-50 rounded-xl border border-slate-100">
+              <i class="fa-solid fa-circle-check text-indigo-600 text-lg mb-2 block"></i>
+              <h3 class="font-semibold text-sm text-slate-800 mb-1">Chống Đứt Đoạn</h3>
+              <p class="text-xs text-slate-500">Tự lưu checkpoint từng đoạn nhỏ, dễ dàng khôi phục tiến trình khi gián đoạn.</p>
+            </div>
+          </div>
+
+          <div class="flex justify-center gap-4">
+            <button onclick="document.getElementById('btn-new-project').click()" class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm px-6 py-3 rounded-lg transition shadow-md">
+              Bắt đầu ngay
+            </button>
+            <button onclick="document.getElementById('btn-open-vault').click()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-sm px-6 py-3 rounded-lg transition border border-slate-200">
+              Cấu hình API Key
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- MÀN HÌNH LÀM VIỆC DỰ ÁN CHI TIẾT (PROJECT WORKSPACE) - Ẩn mặc định -->
+      <div id="project-workspace" class="hidden flex-1 flex flex-col overflow-hidden">
+        
+        <!-- Header Dự án -->
+        <header class="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shrink-0">
+          <div class="flex items-center space-x-3 overflow-hidden mr-4">
+            <div class="bg-indigo-100 text-indigo-600 p-2 rounded-lg">
+              <i class="fa-solid fa-file-audio text-lg"></i>
+            </div>
+            <div class="overflow-hidden">
+              <h2 id="project-title" class="font-bold text-slate-800 text-lg truncate">Tên dự án hiện tại</h2>
+              <div class="flex items-center gap-2 mt-0.5">
+                <span id="project-status" class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-700 border border-amber-200 uppercase tracking-wider">Đang xử lý</span>
+                <span class="text-xs text-slate-400">•</span>
+                <span id="project-languages-badge" class="text-xs text-slate-500 font-medium">
+                  <i class="fa-solid fa-language mr-1"></i> vi-VN → en-US
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Các nút hành động chính của Dự án -->
+          <div class="flex items-center space-x-2">
+            <button id="btn-start-processing" class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg font-semibold text-sm transition flex items-center gap-1.5 shadow-sm">
+              <i class="fa-solid fa-play"></i> Bắt đầu xử lý AI
+            </button>
+            <button id="btn-resume-processing" class="hidden bg-amber-600 hover:bg-amber-500 text-white px-4 py-2 rounded-lg font-semibold text-sm transition flex items-center gap-1.5 shadow-sm">
+              <i class="fa-solid fa-rotate-left"></i> Tiếp tục (Resume)
+            </button>
+            <button id="btn-save-project-changes" class="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 px-4 py-2 rounded-lg font-semibold text-sm transition flex items-center gap-1.5">
+              <i class="fa-solid fa-floppy-disk"></i> Lưu thay đổi
+            </button>
+          </div>
+        </header>
+
+        <!-- Trình phát Audio & Timeline các đoạn cắt (Chunks) -->
+        <section class="bg-slate-100 border-b border-slate-200 p-4 shrink-0">
+          <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center gap-4">
+            <!-- Audio Player -->
+            <div class="w-full md:w-1/3 flex items-center gap-3 bg-white p-2.5 rounded-xl border border-slate-200 shadow-sm">
+              <audio id="audio-source-player" controls class="w-full h-9"></audio>
+            </div>
+            
+            <!-- Tiến trình tổng quan các Chunk -->
+            <div class="w-full md:w-2/3 flex flex-col">
+              <div class="flex items-center justify-between text-xs text-slate-500 mb-1.5">
+                <span class="font-semibold"><i class="fa-solid fa-cubes mr-1"></i>Trạng thái phân mảnh âm thanh (Audio Chunks)</span>
+                <span id="chunks-progress-text" class="font-mono bg-slate-200 px-2 py-0.5 rounded text-slate-700">0/0 Đã hoàn thành</span>
+              </div>
+              <!-- Grid hiển thị trạng thái từng chunk trực quan -->
+              <div id="chunks-grid" class="flex flex-wrap gap-1 bg-white p-3 rounded-xl border border-slate-200 min-h-[44px] items-center">
+                <span class="text-xs text-slate-400 italic">Chưa thực hiện cắt nhỏ file audio...</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- KHU VỰC CHIA ĐÔI: TRÁI (CHUNKS DETAIL) - PHẢI (FINAL TRANSCRIPT & AI TOOLS) -->
+        <section class="flex-1 flex overflow-hidden">
+          
+          <!-- Cột Trái: Chi tiết Từng Chunk và Điều chỉnh Diarization -->
+          <div class="w-1/2 border-r border-slate-200 flex flex-col bg-slate-50">
+            <div class="p-4 border-b border-slate-200 bg-white flex items-center justify-between shrink-0">
+              <div class="flex items-center gap-2">
+                <i class="fa-solid fa-list-check text-indigo-600"></i>
+                <h3 class="font-bold text-slate-800 text-sm">Chi tiết Phân đoạn (Chunk Transcripts)</h3>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-slate-500">Gán tên người nói:</span>
+                <button id="btn-toggle-diarization-map" class="text-indigo-600 hover:text-indigo-500 text-xs font-semibold flex items-center gap-1">
+                  <i class="fa-solid fa-users-gear"></i> Bản đồ Speaker
+                </button>
+              </div>
+            </div>
+
+            <!-- Bảng Ánh xạ Diarization (Ẩn/Hiện linh hoạt) -->
+            <div id="diarization-mapping-panel" class="hidden bg-amber-50 border-b border-amber-200 p-4 shrink-0 transition-all">
+              <h4 class="font-semibold text-xs text-amber-800 mb-2 flex items-center gap-1">
+                <i class="fa-solid fa-user-pen"></i> Ánh xạ danh tính người nói (Diarization Map)
+              </h4>
+              <div id="diarization-list" class="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto">
+                <!-- Danh sách Speaker Mapping sẽ render tại đây -->
+                <p class="text-xs text-amber-600 italic col-span-2">Chưa phát hiện nhãn người nói nào.</p>
+              </div>
+              <div class="mt-3 flex justify-end">
+                <button id="btn-apply-diarization" class="bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold py-1 px-3 rounded transition">
+                  Cập nhật danh tính
+                </button>
+              </div>
+            </div>
+
+            <!-- Danh sách cuộn các Chunks -->
+            <div id="chunks-list-container" class="flex-1 overflow-y-auto p-4 space-y-4">
+              <!-- Nội dung Chunk sẽ được render động -->
+              <div class="text-center py-12 text-slate-400 text-sm">
+                <i class="fa-regular fa-folder-closed text-3xl mb-2 block"></i>
+                Chưa có dữ liệu phân đoạn. Bấm nút "Bắt đầu xử lý AI" để bắt đầu.
+              </div>
+            </div>
+          </div>
+
+          <!-- Cột Phải: Trình biên tập tổng hợp & AI Co-pilot -->
+          <div class="w-1/2 flex flex-col bg-white">
+            <!-- Tabs chuyển đổi công cụ -->
+            <div class="flex border-b border-slate-200 bg-slate-50 shrink-0">
+              <button id="tab-btn-transcript" class="flex-1 py-3 px-4 text-center font-semibold text-xs border-b-2 border-indigo-600 text-indigo-600 flex items-center justify-center gap-1.5 transition">
+                <i class="fa-solid fa-file-signature"></i> Văn bản Tổng hợp
+              </button>
+              <button id="tab-btn-summary" class="flex-1 py-3 px-4 text-center font-semibold text-xs border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center justify-center gap-1.5 transition">
+                <i class="fa-solid fa-chart-line"></i> Tóm tắt & Phân tích AI
+              </button>
+              <button id="tab-btn-export" class="flex-1 py-3 px-4 text-center font-semibold text-xs border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center justify-center gap-1.5 transition">
+                <i class="fa-solid fa-file-export"></i> Xuất bản (Export)
+              </button>
+            </div>
+
+            <!-- NỘI DUNG CÁC TAB -->
+            <div class="flex-1 overflow-hidden flex flex-col">
+              
+              <!-- Tab 1: Văn bản Tổng hợp (Final Transcript Editor) -->
+              <div id="tab-content-transcript" class="flex-1 flex flex-col p-4 overflow-hidden">
+                <div class="flex items-center justify-between mb-2 shrink-0">
+                  <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Bản thảo hoàn chỉnh (Đã ghép nối)</span>
+                  <div class="flex gap-1.5">
+                    <button id="btn-stitch-transcript" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold py-1 px-2.5 rounded border border-indigo-200 flex items-center gap-1 transition" title="Tự động ghép nối các đoạn và loại bỏ phần trùng lặp">
+                      <i class="fa-solid fa-puzzle-piece"></i> Ghép nối thông minh
+                    </button>
+                    <button id="btn-ai-polish" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold py-1 px-2.5 rounded border border-indigo-200 flex items-center gap-1 transition" title="Sửa lỗi chính tả, dấu câu bằng AI">
+                      <i class="fa-solid fa-magic"></i> Đánh bóng AI
+                    </button>
+                  </div>
+                </div>
+                <div class="flex-1 relative">
+                  <textarea id="final-transcript-editor" class="w-full h-full p-4 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm leading-relaxed text-slate-700 resize-none" placeholder="Văn bản tổng hợp từ các đoạn cắt sẽ hiển thị tại đây sau khi ghép nối..."></textarea>
+                </div>
+              </div>
+
+              <!-- Tab 2: Tóm tắt & Phân tích AI -->
+              <div id="tab-content-summary" class="hidden flex-1 flex flex-col p-4 overflow-hidden">
+                <div class="flex items-center justify-between mb-3 shrink-0">
+                  <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Tóm tắt & Phân tích Nội dung</span>
+                  <div class="flex gap-2">
+                    <button id="btn-generate-summary" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold py-1.5 px-3 rounded flex items-center gap-1 transition">
+                      <i class="fa-solid fa-sparkles"></i> Tạo Tóm tắt AI
+                    </button>
+                    <button id="btn-translate-transcript" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold py-1.5 px-3 rounded flex items-center gap-1 transition">
+                      <i class="fa-solid fa-language"></i> Dịch Văn Bản
+                    </button>
+                  </div>
+                </div>
+                
+                <!-- Khung hiển thị tóm tắt -->
+                <div class="flex-1 overflow-y-auto border border-slate-200 rounded-xl bg-slate-50 p-4">
+                  <div id="summary-content-view" class="prose prose-sm max-w-none text-slate-700 space-y-3">
+                    <p class="text-xs text-slate-400 italic text-center py-8">Chưa có bản tóm tắt nào được tạo. Hãy nhấn nút "Tạo Tóm tắt AI" phía trên.</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Tab 3: Xuất bản (Export Hub) -->
+              <div id="tab-content-export" class="hidden flex-1 flex flex-col p-4 overflow-hidden">
+                <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-4 shrink-0">
+                  <h4 class="font-bold text-slate-800 text-xs mb-3 flex items-center gap-1">
+                    <i class="fa-solid fa-user-tie text-indigo-600"></i> Chọn cấu hình vai trò xuất bản (Export Role)
+                  </h4>
+                  <div class="flex gap-3 items-center">
+                    <select id="select-export-role" class="flex-1 bg-white border border-slate-300 rounded-lg py-2 px-3 text-xs text-slate-700 focus:ring-1 focus:ring-indigo-500 focus:outline-none">
+                      <!-- Các vai trò xuất bản sẽ được render tại đây -->
+                    </select>
+                    <button id="btn-refresh-roles" class="bg-slate-200 hover:bg-slate-300 text-slate-700 p-2 rounded-lg text-xs transition" title="Tải lại danh sách">
+                      <i class="fa-solid fa-arrows-rotate"></i>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="flex-1 flex flex-col overflow-hidden">
+                  <div class="flex items-center justify-between mb-2 shrink-0">
+                    <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Xem trước tài liệu Markdown (.md)</span>
+                    <div class="flex gap-1">
+                      <button id="btn-copy-md" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold py-1 px-2.5 rounded border border-slate-300 flex items-center gap-1 transition">
+                        <i class="fa-regular fa-copy"></i> Copy
+                      </button>
+                      <button id="btn-download-md" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold py-1 px-2.5 rounded flex items-center gap-1 transition">
+                        <i class="fa-solid fa-download"></i> Tải .MD
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <!-- Khung hiển thị kết quả Markdown -->
+                  <div class="flex-1 relative overflow-hidden border border-slate-200 rounded-xl mb-4">
+                    <textarea id="markdown-preview" class="w-full h-full p-4 bg-slate-900 text-slate-100 font-mono text-xs leading-relaxed resize-none focus:outline-none" placeholder="Nội dung Markdown sẽ tự động tạo dựa trên mẫu vai trò đã chọn..."></textarea>
+                  </div>
+
+                  <!-- Các định dạng xuất phụ -->
+                  <div class="shrink-0 flex gap-2 justify-center py-2 border-t border-slate-100">
+                    <button id="btn-download-srt" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold py-1.5 px-3 rounded border border-slate-300 flex items-center gap-1 transition">
+                      <i class="fa-regular fa-closed-captioning"></i> Xuất SRT (Phụ đề)
+                    </button>
+                    <button id="btn-download-vtt" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold py-1.5 px-3 rounded border border-slate-300 flex items-center gap-1 transition">
+                      <i class="fa-regular fa-closed-captioning"></i> Xuất VTT
+                    </button>
+                    <button id="btn-download-json" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold py-1.5 px-3 rounded border border-slate-300 flex items-center gap-1 transition">
+                      <i class="fa-regular fa-file-code"></i> Xuất JSON
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+        </section>
+
+      </div>
+
+    </main>
+
+  </div>
+
+
+  <!-- ========================================== -->
+  <!-- MODAL 1: TẠO DỰ ÁN MỚI (NEW PROJECT MODAL) -->
+  <!-- ========================================== -->
+  <div id="new-project-modal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div class="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-slate-100 flex flex-col overflow-hidden max-h-[90vh]">
+      <!-- Header -->
+      <div class="p-5 border-b border-slate-100 flex items-center justify-between bg-indigo-50/50">
+        <div class="flex items-center space-x-2 text-indigo-600">
+          <i class="fa-solid fa-folder-plus text-xl"></i>
+          <h3 class="font-bold text-slate-800 text-base">Khởi tạo Dự án Mới</h3>
+        </div>
+        <button id="btn-close-new-project" class="text-slate-400 hover:text-slate-600 transition">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <!-- Form -->
+      <form id="form-create-project" class="p-6 space-y-4 overflow-y-auto flex-1" onsubmit="return false;">
+        <!-- Tên dự án -->
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Tên dự án <span class="text-rose-500">*</span></label>
+          <input type="text" id="input-project-name" required class="w-full border border-slate-300 rounded-lg py-2 px-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder="Ví dụ: Cuộc họp Nội bộ ngày 24/10">
+        </div>
+
+        <!-- Chọn Ngôn ngữ -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Ngôn ngữ gốc (Source)</label>
+            <select id="select-source-language" class="w-full bg-white border border-slate-300 rounded-lg py-2 px-3 text-xs text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+              <option value="vi-VN">Tiếng Việt (vi-VN)</option>
+              <option value="en-US">Tiếng Anh (en-US)</option>
+              <option value="zh-CN">Tiếng Trung (zh-CN)</option>
+              <option value="ja-JP">Tiếng Nhật (ja-JP)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Ngôn ngữ dịch (Target)</label>
+            <select id="select-target-language" class="w-full bg-white border border-slate-300 rounded-lg py-2 px-3 text-xs text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+              <option value="">Không dịch (Mặc định)</option>
+              <option value="vi-VN">Tiếng Việt (vi-VN)</option>
+              <option value="en-US">Tiếng Anh (en-US)</option>
+              <option value="zh-CN">Tiếng Trung (zh-CN)</option>
+              <option value="ja-JP">Tiếng Nhật (ja-JP)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Nguồn Âm thanh: Tải lên hoặc Ghi âm -->
+        <div class="border-t border-slate-100 pt-4">
+          <span class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Nguồn âm thanh / Video</span>
+          
+          <!-- Tabs lựa chọn nguồn -->
+          <div class="flex gap-2 mb-4 bg-slate-100 p-1 rounded-lg">
+            <button type="button" id="tab-btn-upload" class="flex-1 py-1.5 px-3 rounded-md text-xs font-semibold bg-white text-slate-800 shadow-sm transition">
+              <i class="fa-solid fa-file-arrow-up mr-1"></i> Tải file lên
+            </button>
+            <button type="button" id="tab-btn-record" class="flex-1 py-1.5 px-3 rounded-md text-xs font-semibold text-slate-500 hover:text-slate-800 transition">
+              <i class="fa-solid fa-microphone mr-1"></i> Ghi âm trực tiếp
+            </button>
+          </div>
+
+          <!-- Nội dung Tab: Tải file -->
+          <div id="source-upload-container" class="space-y-2">
+            <div class="border-2 border-dashed border-slate-300 hover:border-indigo-500 rounded-xl p-6 text-center cursor-pointer bg-slate-50 transition relative">
+              <input type="file" id="input-audio-file" accept="audio/*,video/*" class="absolute inset-0 opacity-0 cursor-pointer">
+              <i class="fa-solid fa-cloud-arrow-up text-3xl text-slate-400 mb-2"></i>
+              <p class="text-xs font-semibold text-slate-700">Kéo thả hoặc nhấp vào đây để tải file</p>
+              <p class="text-[10px] text-slate-400 mt-1">Hỗ trợ MP3, WAV, M4A, MP4... tối đa 200MB</p>
+            </div>
+            <div id="selected-file-info" class="hidden text-xs bg-indigo-50 text-indigo-700 p-2.5 rounded-lg border border-indigo-100 flex items-center justify-between">
+              <span class="truncate font-medium" id="selected-file-name">filename.mp3</span>
+              <span class="shrink-0 font-mono text-[10px] bg-indigo-200 px-1.5 py-0.5 rounded" id="selected-file-size">0 MB</span>
+            </div>
+          </div>
+
+          <!-- Nội dung Tab: Ghi âm -->
+          <div id="source-record-container" class="hidden space-y-4 text-center p-4 bg-slate-50 rounded-xl border border-slate-200">
+            <div class="flex flex-col items-center justify-center">
+              <!-- Vòng tròn trạng thái ghi âm -->
+              <div id="recording-indicator" class="w-16 h-16 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center mb-2 transition">
+                <i class="fa-solid fa-microphone text-2xl"></i>
+              </div>
+              <span id="recording-status" class="text-xs font-semibold text-slate-500">Sẵn sàng ghi âm</span>
+              <span id="recording-timer" class="text-lg font-mono font-bold text-slate-800 mt-1">00:00</span>
+            </div>
+
+            <!-- Canvas vẽ sóng âm thanh trực tiếp (Sử dụng Web Audio API) -->
+            <canvas id="recording-canvas" class="w-full h-12 bg-slate-900 rounded-lg border border-slate-800"></canvas>
+
+            <div class="flex justify-center gap-2">
+              <button type="button" id="btn-record-audio" class="bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold py-2 px-4 rounded-lg flex items-center gap-1.5 transition">
+                <i class="fa-solid fa-circle text-[10px] pulse-recording"></i> Bắt đầu Ghi
+              </button>
+              <button type="button" id="btn-stop-record" disabled class="bg-slate-300 text-slate-500 text-xs font-semibold py-2 px-4 rounded-lg flex items-center gap-1.5 transition cursor-not-allowed">
+                <i class="fa-solid fa-square"></i> Dừng & Lưu
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Các tham số nâng cao (Cắt chunk) -->
+        <div class="border-t border-slate-100 pt-4">
+          <details class="group">
+            <summary class="flex justify-between items-center font-bold text-xs text-slate-500 uppercase tracking-wider cursor-pointer list-none">
+              <span>Cấu hình phân mảnh nâng cao</span>
+              <span class="transition group-open:rotate-180">
+                <i class="fa-solid fa-chevron-down"></i>
+              </span>
+            </summary>
+            <div class="mt-3 space-y-3 pl-1">
+              <div>
+                <div class="flex justify-between text-xs text-slate-500 mb-1">
+                  <span>Thời lượng tối đa của một đoạn (giây)</span>
+                  <span id="val-chunk-duration" class="font-bold text-indigo-600">60s</span>
+                </div>
+                <input type="range" id="input-chunk-duration" min="30" max="120" step="5" value="60" class="w-full accent-indigo-600">
+              </div>
+              <p class="text-[10px] text-slate-400 leading-relaxed">
+                * Việc cắt nhỏ file âm thanh giúp hệ thống xử lý song song thông qua các nhà cung cấp AI nhanh hơn và ngăn ngừa mất dữ liệu khi gặp lỗi mạng.
+              </p>
+            </div>
+          </details>
+        </div>
+
+        <!-- Submit -->
+        <div class="border-t border-slate-100 pt-4 flex gap-3">
+          <button type="button" id="btn-cancel-create" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-semibold py-2.5 rounded-lg transition border border-slate-200">
+            Hủy bỏ
+          </button>
+          <button type="button" id="btn-submit-create-project" class="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold py-2.5 rounded-lg transition shadow-md shadow-indigo-600/10">
+            Tạo dự án
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+
+  <!-- ========================================== -->
+  <!-- MODAL 2: QUẢN LÝ VAULT & API KEYS -->
+  <!-- ========================================== -->
+  <div id="vault-modal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div class="bg-white w-full max-w-2xl rounded-2xl shadow-2xl border border-slate-100 flex flex-col overflow-hidden max-h-[90vh]">
+      <!-- Header -->
+      <div class="p-5 border-b border-slate-100 flex items-center justify-between bg-amber-50/50">
+        <div class="flex items-center space-x-2 text-amber-600">
+          <i class="fa-solid fa-vault text-xl"></i>
+          <h3 class="font-bold text-slate-800 text-base">API Key Vault (Két sắt bảo mật)</h3>
+        </div>
+        <button id="btn-close-vault" class="text-slate-400 hover:text-slate-600 transition">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <div class="p-6 overflow-y-auto flex-1 space-y-6">
+        
+        <!-- Khối Mật khẩu Vault (Mở khóa / Khóa) -->
+        <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+          <h4 class="font-bold text-xs text-slate-700 uppercase tracking-wider mb-2">Trạng thái bảo mật két sắt</h4>
+          <p class="text-xs text-slate-500 mb-4 leading-relaxed">
+            Các khóa API của bạn sẽ được mã hóa cực kỳ an toàn bằng thuật toán <strong>AES-GCM 256-bit</strong> ngay tại trình duyệt của bạn thông qua mật khẩu tự đặt. Hãy nhập mật khẩu để mở khóa hoặc thiết lập mới.
+          </p>
+
+          <div class="flex flex-col md:flex-row gap-2 items-stretch">
+            <div class="relative flex-1">
+              <input type="password" id="vault-password-input" class="w-full border border-slate-300 rounded-lg py-2 pl-3 pr-10 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder="Nhập mật khẩu Vault của bạn...">
+              <button type="button" id="btn-toggle-vault-password-visibility" class="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600">
+                <i class="fa-regular fa-eye"></i>
+              </button>
+            </div>
+            <div class="flex gap-2">
+              <button type="button" id="btn-submit-vault-password" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold py-2 px-4 rounded-lg transition shrink-0">
+                Mở khóa / Thiết lập
+              </button>
+              <button type="button" id="btn-lock-vault" class="bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold py-2 px-4 rounded-lg transition shrink-0">
+                Khóa Két Sắt
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Khu vực Quản lý Khóa API (Chỉ hiển thị khi ĐÃ MỞ KHÓA) -->
+        <div id="vault-unlocked-content" class="hidden space-y-6">
+          
+          <!-- Form thêm API Key mới -->
+          <div class="border-t border-slate-100 pt-4">
+            <h4 class="font-bold text-xs text-slate-700 uppercase tracking-wider mb-3">Thêm API Key mới</h4>
+            <form id="form-add-api-key" class="grid grid-cols-1 md:grid-cols-3 gap-3 items-end" onsubmit="return false;">
+              <div>
+                <label class="block text-[11px] font-bold text-slate-500 mb-1">Nhà cung cấp AI <span class="text-rose-500">*</span></label>
+                <select id="select-provider" class="w-full bg-white border border-slate-300 rounded-lg py-2 px-3 text-xs text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                  <option value="Deepgram">Deepgram AI (STT chuyên nghiệp)</option>
+                  <option value="GoogleGemini">Google Gemini (STT & Biên tập)</option>
+                  <option value="Groq">Groq Whisper (STT miễn phí, nhanh)</option>
+                  <option value="WebSpeech">Web Speech API (Trình duyệt miễn phí)</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-500 mb-1">Tên gợi nhớ (Alias) <span class="text-rose-500">*</span></label>
+                <input type="text" id="input-key-alias" required class="w-full border border-slate-300 rounded-lg py-2 px-3 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder="Ví dụ: My Gemini Key">
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold text-slate-500 mb-1">Chuỗi API Key <span class="text-rose-500">*</span></label>
+                <input type="password" id="input-api-key" required class="w-full border border-slate-300 rounded-lg py-2 px-3 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder="Nhập API Key...">
+              </div>
+              <div class="md:col-span-3 flex justify-end">
+                <button type="button" id="btn-save-api-key" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold py-2 px-4 rounded-lg transition flex items-center gap-1">
+                  <i class="fa-solid fa-circle-check"></i> Lưu Khóa API
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Danh sách API Key hiện tại -->
+          <div class="border-t border-slate-100 pt-4">
+            <h4 class="font-bold text-xs text-slate-700 uppercase tracking-wider mb-3 flex items-center justify-between">
+              <span>Danh sách API Key trong két sắt</span>
+              <span id="api-keys-count" class="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded text-[10px] font-bold">0</span>
+            </h4>
+            
+            <div class="overflow-x-auto border border-slate-200 rounded-xl">
+              <table class="w-full text-left border-collapse">
+                <thead>
+                  <tr class="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    <th class="p-3">Nhà cung cấp</th>
+                    <th class="p-3">Tên gợi nhớ</th>
+                    <th class="p-3">Khóa (Ẩn)</th>
+                    <th class="p-3">Trạng thái</th>
+                    <th class="p-3 text-right">Hành động</th>
+                  </tr>
+                </thead>
+                <tbody id="api-keys-list" class="divide-y divide-slate-100 text-xs text-slate-700">
+                  <!-- Các dòng API key sẽ được render tại đây -->
+                  <tr>
+                    <td colspan="5" class="p-4 text-center text-slate-400 italic">Chưa có khóa API nào được lưu cấu hình.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Trạng thái khi Vault chưa được mở khóa -->
+        <div id="vault-locked-placeholder" class="text-center py-12 text-slate-400">
+          <i class="fa-solid fa-lock text-4xl mb-3 block text-slate-300"></i>
+          <p class="text-xs">Vui lòng nhập mật khẩu phía trên để mở khóa két sắt và quản lý các API Key của bạn.</p>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ========================================== -->
+  <!-- MODAL 3: CÀI ĐẶT CHUNG (SETTINGS MODAL) -->
+  <!-- ========================================== -->
+  <div id="settings-modal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div class="bg-white w-full max-w-2xl rounded-2xl shadow-2xl border border-slate-100 flex flex-col overflow-hidden max-h-[90vh]">
+      <!-- Header -->
+      <div class="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+        <div class="flex items-center space-x-2 text-slate-700">
+          <i class="fa-solid fa-sliders text-xl"></i>
+          <h3 class="font-bold text-slate-800 text-base">Cấu hình & Cài đặt hệ thống</h3>
+        </div>
+        <button id="btn-close-settings" class="text-slate-400 hover:text-slate-600 transition">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <div class="p-6 overflow-y-auto flex-1 space-y-6">
+        
+        <!-- Cài đặt Giao diện chung -->
+        <div>
+          <h4 class="font-bold text-xs text-slate-700 uppercase tracking-wider mb-3">Tùy biến Giao diện</h4>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-bold text-slate-500 mb-1.5">Giao diện (Theme)</label>
+              <select id="select-app-theme" class="w-full bg-white border border-slate-300 rounded-lg py-2 px-3 text-xs text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                <option value="light">Sáng (Light Mode)</option>
+                <option value="dark">Tối (Dark Mode)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-500 mb-1.5">Vai trò xuất bản mặc định</label>
+              <select id="select-default-export-role" class="w-full bg-white border border-slate-300 rounded-lg py-2 px-3 text-xs text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                <!-- Sẽ tự động nạp danh sách vai trò -->
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Cài đặt các Vai trò Xuất bản (Export Roles & Templates) -->
+        <div class="border-t border-slate-100 pt-6">
+          <h4 class="font-bold text-xs text-slate-700 uppercase tracking-wider mb-3 flex items-center justify-between">
+            <span>Quản lý Mẫu Vai trò xuất bản (Markdown Templates)</span>
+            <span class="text-[10px] text-slate-400 font-semibold italic">Sử dụng biến {{PROJECT_NAME}}, {{TRANSCRIPT}}, {{SUMMARY}}</span>
+          </h4>
+
+          <!-- Form thêm Mẫu mới -->
+          <form id="form-add-export-role" class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3 mb-4" onsubmit="return false;">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div class="md:col-span-2">
+                <label class="block text-[11px] font-bold text-slate-500 mb-1">Tên vai trò (Ví dụ: Biên bản cuộc họp, Bài đăng Blog...)</label>
+                <input type="text" id="input-role-name" required class="w-full border border-slate-300 rounded-lg py-2 px-3 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder="Tên vai trò...">
+              </div>
+              <div class="md:col-span-2">
+                <label class="block text-[11px] font-bold text-slate-500 mb-1">Mẫu Markdown (Markdown Template)</label>
+                <textarea id="textarea-role-template" required rows="4" class="w-full border border-slate-300 rounded-lg py-2 px-3 text-xs font-mono focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder="# {{PROJECT_NAME}}&#10;&#10;## Tóm tắt nội dung&#10;{{SUMMARY}}&#10;&#10;## Nội dung chi tiết&#10;{{TRANSCRIPT}}"></textarea>
+              </div>
+            </div>
+            <div class="flex justify-end">
+              <button type="button" id="btn-save-export-role" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold py-2 px-4 rounded-lg transition">
+                Thêm vai trò mới
+              </button>
+            </div>
+          </form>
+
+          <!-- Danh sách các vai trò hiện có -->
+          <div class="border border-slate-200 rounded-xl overflow-hidden">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  <th class="p-3">Tên vai trò</th>
+                  <th class="p-3">Nội dung mẫu (Tóm tắt)</th>
+                  <th class="p-3 text-right">Hành động</th>
+                </tr>
+              </thead>
+              <tbody id="export-roles-list" class="divide-y divide-slate-100 text-xs text-slate-700">
+                <!-- Sẽ render động danh sách vai trò từ IndexedDB -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Nạp các file script theo đúng thứ tự trong kiến trúc -->
+  <script src="js/config.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
