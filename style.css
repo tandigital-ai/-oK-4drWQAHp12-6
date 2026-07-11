@@ -473,3 +473,143 @@ body {
   background-color: var(--primary-hover);
   transform: translateY(-3px);
 }
+/* ============================================= */
+/* RESPONSIVE TOÀN DIỆN — MOBILE / TABLET / DESKTOP */
+/* ============================================= */
+
+/* Chiều cao thật, tránh lỗi thanh địa chỉ trên iOS/Android */
+.app-shell {
+  display: flex;
+  flex: 1 1 auto;
+  height: 100vh;
+  height: 100dvh; /* dvh = dynamic viewport height, chuẩn cho mobile */
+  overflow: hidden;
+}
+
+/* --- SIDEBAR trên DESKTOP: giữ nguyên --- */
+@media (min-width: 1024px) {
+  .app-sidebar {
+    position: relative;
+    transform: translateX(0);
+  }
+}
+
+/* --- SIDEBAR trên MOBILE/TABLET: trượt từ trái vào --- */
+@media (max-width: 1023px) {
+  .app-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100dvh;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+    box-shadow: 4px 0 20px rgba(0,0,0,0.3);
+  }
+  .app-sidebar.open {
+    transform: translateX(0);
+  }
+  /* Chừa chỗ cho nút hamburger ở góc */
+  #project-workspace header,
+  #welcome-screen {
+    padding-top: 0.5rem;
+  }
+  #project-title { padding-left: 2.5rem; }
+}
+
+/* --- ĐIỆN THOẠI (≤ 640px) --- */
+@media (max-width: 640px) {
+  /* Header dự án: xếp dọc, không tràn */
+  #project-workspace header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+    padding: 3rem 1rem 1rem 1rem;
+  }
+  #project-workspace header .flex.items-center.space-x-2 {
+    flex-wrap: wrap;
+  }
+
+  /* Các nút hành động dự án: giãn đều, dễ bấm bằng ngón tay */
+  #btn-start-processing,
+  #btn-resume-processing,
+  #btn-save-project-changes {
+    flex: 1;
+    justify-content: center;
+    padding: 0.75rem 0.5rem;
+    font-size: 0.8rem;
+  }
+
+  /* Khu vực player audio + chunk grid: xếp dọc */
+  section .max-w-7xl.mx-auto {
+    flex-direction: column;
+  }
+  #audio-source-player { width: 100%; }
+
+  /* Tabs công cụ: cho phép cuộn ngang nếu chật */
+  #tab-btn-transcript, #tab-btn-summary, #tab-btn-export {
+    font-size: 0.7rem;
+    padding: 0.6rem 0.3rem;
+  }
+
+  /* Modal: gần như full màn hình, có thể cuộn */
+  #new-project-modal > div,
+  #vault-modal > div,
+  #settings-modal > div {
+    width: 100%;
+    max-width: 100%;
+    max-height: 92dvh;
+    border-radius: 1rem 1rem 0 0;
+  }
+  #new-project-modal, #vault-modal, #settings-modal {
+    align-items: flex-end !important;
+    padding: 0 !important;
+  }
+
+  /* Bảng trong Vault/Settings: cho cuộn ngang thay vì vỡ */
+  .overflow-x-auto table { min-width: 480px; }
+
+  /* Ô nhập liệu đủ lớn để không bị iOS zoom khi focus */
+  input, select, textarea { font-size: 16px !important; }
+
+  /* Textarea soạn thảo: chiều cao hợp lý trên mobile */
+  #final-transcript-editor,
+  #markdown-preview {
+    min-height: 40vh;
+  }
+
+  /* Grid trạng thái chunk: ô nhỏ lại cho vừa */
+  #chunks-grid .w-4 { width: 0.75rem; height: 0.75rem; }
+}
+
+/* --- TABLET / iPad (641px – 1023px) --- */
+@media (min-width: 641px) and (max-width: 1023px) {
+  #project-workspace header { padding-left: 3.5rem; }
+  /* Modal vừa phải, canh giữa */
+  #new-project-modal > div,
+  #vault-modal > div,
+  #settings-modal > div {
+    max-width: 90%;
+    max-height: 90dvh;
+  }
+}
+
+/* --- Vùng an toàn cho iPhone có "tai thỏ" --- */
+@supports (padding: max(0px)) {
+  #btn-mobile-menu {
+    top: max(0.75rem, env(safe-area-inset-top));
+    left: max(0.75rem, env(safe-area-inset-left));
+  }
+  #toast-container {
+    bottom: max(1.25rem, env(safe-area-inset-bottom));
+    right: max(1.25rem, env(safe-area-inset-right));
+  }
+}
+
+/* --- Toast trên mobile: rộng gần full, dễ đọc --- */
+@media (max-width: 640px) {
+  #toast-container {
+    left: 0.75rem;
+    right: 0.75rem;
+    max-width: none;
+  }
+}

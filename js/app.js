@@ -1283,3 +1283,32 @@ function showToast(message, type = "info") {
     setTimeout(() => toast.remove(), 300);
   }, 4000);
 }
+
+// ==========================================
+// RESPONSIVE: NÚT MENU DI ĐỘNG
+// ==========================================
+(function setupMobileMenu() {
+  function ready() {
+    const btn = document.getElementById("btn-mobile-menu");
+    const sidebar = document.getElementById("main-sidebar");
+    const overlay = document.getElementById("sidebar-overlay");
+    if (!btn || !sidebar || !overlay) return;
+
+    const open = () => { sidebar.classList.add("open"); overlay.classList.remove("hidden"); };
+    const close = () => { sidebar.classList.remove("open"); overlay.classList.add("hidden"); };
+
+    btn.addEventListener("click", () => {
+      sidebar.classList.contains("open") ? close() : open();
+    });
+    overlay.addEventListener("click", close);
+
+    // Bấm vào một dự án hoặc "Tạo dự án mới" thì tự đóng menu trên mobile
+    sidebar.addEventListener("click", (e) => {
+      if (window.innerWidth < 1024 && e.target.closest("[onclick], button")) {
+        setTimeout(close, 150);
+      }
+    });
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", ready);
+  else ready();
+})();
