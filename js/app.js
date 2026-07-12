@@ -464,11 +464,20 @@ function getAudioDuration(file) {
 async function startRecording() {
   try {
     recordedChunksData = [];
-    activeRecordingStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    mediaRecorderInstance = new MediaRecorder(activeRecordingStream);
+    activeRecordingStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+    });
+    // Chọn định dạng ghi âm ổn định nhất mà trình duyệt hỗ trợ
+    let mimeType = "";
+    if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) mimeType = "audio/webm;codecs=opus";
+    else if (MediaRecorder.isTypeSupported("audio/webm")) mimeType = "audio/webm";
+    else if (MediaRecorder.isTypeSupported("audio/mp4")) mimeType = "audio/mp4";
+    mediaRecorderInstance = mimeType ? new MediaRecorder(activeRecordingStream, { mimeType }) : new MediaRecorder(activeRecordingStream);
+    // yêu cầu dữ liệu mỗi giây để bản ghi hoàn chỉnh hơn
+    mediaRecorderInstance._chosenType = mimeType || "audio/webm";
     mediaRecorderInstance.ondataavailable = (e) => { if (e.data.size > 0) recordedChunksData.push(e.data); };
     mediaRecorderInstance.onstop = () => {
-      selectedAudioBlob = new Blob(recordedChunksData, { type: "audio/webm" });
+      selectedAudioBlob = new Blob(recordedChunksData, { type: mediaRecorderInstance._chosenType || "audio/webm" });
       selectedAudioDuration = (Date.now() - recordingStartTime) / 1000;
       const info = document.getElementById("selected-file-info");
       info?.classList.remove("hidden");
@@ -477,7 +486,7 @@ async function startRecording() {
       const nameInput = document.getElementById("input-project-name");
       if (nameInput && !nameInput.value) nameInput.value = "Ghi âm " + new Date().toLocaleDateString("vi-VN");
     };
-    mediaRecorderInstance.start();
+    mediaRecorderInstance.start(1000);
     recordingStartTime = Date.now();
 
     document.getElementById("recording-indicator")?.classList.add("recording-active");
@@ -576,15 +585,46 @@ async function sliceAudioIntoChunks(projectId, audioBlob, totalDuration, chunkDu
   const overlap = CHUNK_OVERLAP_SEC;
   const chunkDuration = chunkDur || CHUNK_MAX_DURATION_SEC;
 
+  // ƯU TIÊN: file nhỏ (< 20MB) -> CHUYỂN SANG WAV bằng ffmpeg rồi gửi 1 chunk.
+  // (WebM/Opus từ micro thường bị Groq/Whisper đọc lỗi -> hallucinate. WAV luôn đọc đúng.)
+  const SIZE_LIMIT = 20 * 1024 * 1024; // 20 MB
+  if (audioBlob.size < SIZE_LIMIT) {
+    let finalBlob = audioBlob;
+    try {
+      finalBlob = await convertToWav(audioBlob);   // chuyển sang WAV chuẩn 16kHz mono
+    } catch (e) {
+      console.warn("Không chuyển được WAV, gửi file gốc:", e);
+    }
+    chunks.push({
+      chunkId: generateUUID(), projectId,
+      startTimeSeconds: 0, endTimeSeconds: totalDuration || 0,
+      audioChunkBlob: finalBlob,
+      status: "pending", transcript: "",
+      speakerLabel: "Speaker 1", providerUsed: "", retryCount: 0,
+      errorMessage: "", rawApiResponse: null
+    });
+    return chunks;
+  }
+
+  // FILE LỚN (≥ 20MB): dùng ffmpeg.wasm cắt chính xác sang WAV 16kHz (bền vững cho mọi định dạng)
+  try {
+    return await sliceLongAudioWithFFmpeg(projectId, audioBlob, chunkDuration);
+  } catch (ffErr) {
+    console.warn("ffmpeg cắt lỗi, chuyển sang phương án Web Audio:", ffErr);
+    showToast("Công cụ chính lỗi, dùng phương án dự phòng...", "warning");
+    // (rơi xuống phương án Web Audio bên dưới)
+  }
+
+  // File LỚN mới cắt (và cắt qua Web Audio -> WAV)
   let audioBuffer = null;
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
     const arrayBuf = await audioBlob.arrayBuffer();
     audioBuffer = await ctx.decodeAudioData(arrayBuf);
-    if (!totalDuration || totalDuration <= 0) totalDuration = audioBuffer.duration;
+    totalDuration = audioBuffer.duration;
     ctx.close();
   } catch (e) {
-    console.warn("Không decode được audio, sẽ gửi cả file làm 1 chunk:", e);
+    console.warn("Không decode được audio lớn, gửi cả file:", e);
   }
 
   if (!totalDuration || totalDuration <= 0) totalDuration = 60;
@@ -1466,3 +1506,120 @@ let isProcessing = false;
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", ready);
   else ready();
 })();
+
+
+// ==========================================
+// XỬ LÝ FILE DÀI BẰNG FFMPEG.WASM (bền vững)
+// ==========================================
+let ffmpegInstance = null;
+let ffmpegLoading = null;
+
+// Tải ffmpeg (chỉ tải 1 lần, khi thực sự cần)
+async function loadFFmpeg() {
+  if (ffmpegInstance) return ffmpegInstance;
+  if (ffmpegLoading) return ffmpegLoading;
+
+  ffmpegLoading = (async () => {
+    showToast("Đang tải công cụ xử lý audio (lần đầu ~30MB, vui lòng chờ)...", "info");
+    const { FFmpeg } = FFmpegWASM;   // từ ffmpeg.js
+    const ff = new FFmpeg();
+    const base = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd";
+    await ff.load({
+      coreURL: await FFmpegUtil.toBlobURL(`${base}/ffmpeg-core.js`, "text/javascript"),
+      wasmURL: await FFmpegUtil.toBlobURL(`${base}/ffmpeg-core.wasm`, "application/wasm")
+    });
+    ffmpegInstance = ff;
+    showToast("Đã sẵn sàng công cụ xử lý audio!", "success");
+    return ff;
+  })();
+  return ffmpegLoading;
+}
+
+// Lấy thời lượng chính xác bằng ffmpeg (đáng tin cho mọi định dạng)
+async function getDurationViaFFmpeg(ff, inputName) {
+  // ffmpeg không trả duration trực tiếp dễ dàng; ta đọc qua log
+  let duration = 0;
+  const logHandler = ({ message }) => {
+    const m = message.match(/Duration:\s*(\d+):(\d+):(\d+\.\d+)/);
+    if (m) duration = (+m[1]) * 3600 + (+m[2]) * 60 + parseFloat(m[3]);
+  };
+  ff.on("log", logHandler);
+  try { await ff.exec(["-i", inputName]); } catch (e) { /* ffmpeg -i luôn "lỗi" nhưng vẫn in duration */ }
+  ff.off("log", logHandler);
+  return duration;
+}
+
+// Cắt file dài thành các chunk WAV chuẩn 16kHz mono (tối ưu cho STT)
+async function sliceLongAudioWithFFmpeg(projectId, audioBlob, chunkDur) {
+  const ff = await loadFFmpeg();
+  const ext = (audioBlob.type.split("/")[1] || "dat").split(";")[0];
+  const inputName = "input." + ext;
+
+  showToast("Đang nạp file vào bộ xử lý...", "info");
+  await ff.writeFile(inputName, await FFmpegUtil.fetchFile(audioBlob));
+
+  let totalDuration = await getDurationViaFFmpeg(ff, inputName);
+  if (!totalDuration || totalDuration <= 0) {
+    // dự phòng: dùng thời lượng đã tính từ trước
+    totalDuration = selectedAudioDuration || 0;
+  }
+
+  const chunks = [];
+  const dur = chunkDur || CHUNK_MAX_DURATION_SEC;
+  const overlap = CHUNK_OVERLAP_SEC;
+  let start = 0, idx = 0;
+
+  while (start < totalDuration) {
+    let end = Math.min(start + dur, totalDuration);
+    const outName = `chunk_${idx}.wav`;
+    const segLen = end - start;
+
+    showToast(`Đang cắt đoạn ${idx + 1} (${formatTime(start)}–${formatTime(end)})...`, "info");
+    // -ss: điểm bắt đầu, -t: độ dài, chuyển sang wav 16kHz mono (tối ưu Whisper)
+    await ff.exec([
+      "-i", inputName,
+      "-ss", String(start),
+      "-t", String(segLen + overlap),
+      "-ar", "16000", "-ac", "1",
+      "-c:a", "pcm_s16le",
+      outName
+    ]);
+
+    const data = await ff.readFile(outName);
+    const chunkBlob = new Blob([data.buffer], { type: "audio/wav" });
+    await ff.deleteFile(outName);
+
+    chunks.push({
+      chunkId: generateUUID(), projectId,
+      startTimeSeconds: start, endTimeSeconds: end,
+      audioChunkBlob: chunkBlob, status: "pending", transcript: "",
+      speakerLabel: "Speaker 1", providerUsed: "", retryCount: 0,
+      errorMessage: "", rawApiResponse: null
+    });
+
+    idx++;
+    start = end - overlap;
+    if (end >= totalDuration) break;
+  }
+
+  await ff.deleteFile(inputName);
+  return chunks;
+}
+
+// ==========================================
+// CHUYỂN AUDIO SANG WAV 16kHz mono bằng ffmpeg (chống lỗi WebM/Opus)
+// ==========================================
+async function convertToWav(audioBlob) {
+  const ff = await loadFFmpeg();
+  const ext = (audioBlob.type.split("/")[1] || "webm").split(";")[0];
+  const inName = "conv_in." + ext;
+  const outName = "conv_out.wav";
+
+  showToast("Đang chuẩn hóa âm thanh sang WAV...", "info");
+  await ff.writeFile(inName, await FFmpegUtil.fetchFile(audioBlob));
+  await ff.exec(["-i", inName, "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", outName]);
+  const data = await ff.readFile(outName);
+  await ff.deleteFile(inName);
+  await ff.deleteFile(outName);
+  return new Blob([data.buffer], { type: "audio/wav" });
+}
