@@ -6,6 +6,9 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
   <title>OmniTranscript AI - Ứng dụng Biên tập Nội dung Đa phương tiện Địa phương Đầu tiên</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#4f46e5">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎙️</text></svg>">
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- FontAwesome Icons -->
@@ -41,21 +44,113 @@
       animation: pulse-red 1.5s infinite ease-in-out;
     }
   </style>
+    <!-- CSS RESPONSIVE ƯU TIÊN CAO (đặt sau Tailwind để không bị ghi đè) -->
+  <style>
+    /* Chiều cao thật trên mobile */
+    #app.app-shell {
+      height: 100vh;
+      height: 100dvh;
+    }
+
+    /* ===== DESKTOP (≥1024px): sidebar bình thường ===== */
+    @media (min-width: 1024px) {
+      #main-sidebar {
+        position: relative !important;
+        transform: none !important;
+      }
+      #btn-mobile-menu { display: none !important; }
+    }
+
+    /* ===== MOBILE & TABLET (≤1023px): sidebar trượt ẩn/hiện ===== */
+    @media (max-width: 1023px) {
+      #main-sidebar {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        height: 100dvh !important;
+        width: 280px !important;
+        max-width: 85vw !important;
+        transform: translateX(-100%) !important;
+        transition: transform 0.3s ease !important;
+        z-index: 60 !important;
+        box-shadow: 4px 0 24px rgba(0,0,0,0.4) !important;
+      }
+      #main-sidebar.open {
+        transform: translateX(0) !important;
+      }
+      /* Nội dung chính chiếm toàn bộ chiều rộng, không bị sidebar đè */
+      main {
+        width: 100% !important;
+        padding-top: 3.5rem !important;
+      }
+      #btn-mobile-menu { display: flex !important; }
+    }
+
+    /* ===== ĐIỆN THOẠI (≤640px): tinh chỉnh thêm ===== */
+    @media (max-width: 640px) {
+      #project-workspace header {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 0.75rem !important;
+        padding: 1rem !important;
+      }
+      #project-workspace header > div:last-child {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+      }
+      #project-workspace header button { flex: 1; justify-content: center; }
+
+      /* Khu vực chia đôi -> xếp dọc */
+      #project-workspace section.flex-1 {
+        flex-direction: column !important;
+        overflow-y: auto !important;
+      }
+      #project-workspace section.flex-1 > div {
+        width: 100% !important;
+        min-height: 50vh;
+      }
+
+      section .max-w-7xl { flex-direction: column !important; }
+      #audio-source-player { width: 100% !important; }
+
+      /* Modal chiếm gần trọn màn hình, trượt từ dưới lên */
+      #new-project-modal, #vault-modal, #settings-modal {
+        align-items: flex-end !important;
+        padding: 0 !important;
+      }
+      #new-project-modal > div, #vault-modal > div, #settings-modal > div {
+        width: 100% !important;
+        max-width: 100% !important;
+        max-height: 92dvh !important;
+        border-radius: 1rem 1rem 0 0 !important;
+      }
+
+      /* Bảng cuộn ngang thay vì vỡ */
+      .overflow-x-auto table { min-width: 460px; }
+
+      /* Chống iOS tự zoom khi bấm vào ô nhập */
+      input, select, textarea { font-size: 16px !important; }
+
+      #toast-container {
+        left: 0.75rem !important;
+        right: 0.75rem !important;
+        max-width: none !important;
+      }
+    }
+  </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col transition-colors duration-300">
 
   <!-- Nút mở menu trên di động -->
-  <button id="btn-mobile-menu" class="lg:hidden fixed top-3 left-3 z-[60] bg-slate-900 text-white w-10 h-10 rounded-lg shadow-lg flex items-center justify-center">
+  <button id="btn-mobile-menu" class="fixed top-3 left-3 z-[70] bg-slate-900 text-white w-10 h-10 rounded-lg shadow-lg items-center justify-center" style="display:none">
     <i class="fa-solid fa-bars"></i>
   </button>
   <!-- Lớp phủ tối khi mở menu trên di động -->
-  <div id="sidebar-overlay" class="hidden lg:hidden fixed inset-0 bg-black/50 z-[40]"></div>
-
+  <div id="sidebar-overlay" class="hidden fixed inset-0 bg-black/50 z-[55]"></div>
   <!-- GIAO DIỆN CHÍNH SPA -->
-  <div id="app" class="flex flex-1 overflow-hidden app-shell">
-    
+    <div id="app" class="flex flex-1 overflow-hidden app-shell">   
     <!-- THANH SIDEBAR TRÁI: QUẢN LÝ DỰ ÁN & TIỆN ÍCH -->
-    <aside id="main-sidebar" class="w-72 bg-slate-900 text-white flex flex-col border-r border-slate-800 z-50 app-sidebar">
+      <aside id="main-sidebar" class="w-72 bg-slate-900 text-white flex flex-col border-r border-slate-800">
       <!-- Logo & Bản quyền -->
       <div class="p-5 border-b border-slate-800 flex items-center justify-between">
         <div class="flex items-center space-x-3">
@@ -115,6 +210,9 @@
       <div class="p-4 border-t border-slate-800 bg-slate-950 flex items-center justify-between text-xs text-slate-400">
         <button id="btn-open-settings" class="hover:text-white transition flex items-center gap-1">
           <i class="fa-solid fa-sliders text-sm"></i> Cài đặt chung
+        </button>
+        <button id="btn-open-guide" class="hover:text-white transition flex items-center gap-1">
+          <i class="fa-solid fa-circle-question text-sm"></i> Hướng dẫn
         </button>
         <span class="text-[10px] text-slate-500">TDA © 2024</span>
       </div>
@@ -224,7 +322,7 @@
         <section class="flex-1 flex flex-col lg:flex-row overflow-hidden overflow-y-auto lg:overflow-hidden">
           
           <!-- Cột Trái: Chi tiết Từng Chunk và Điều chỉnh Diarization -->
-          <div class="w-1/2 border-r border-slate-200 flex flex-col bg-slate-50">
+          <div class="w-full lg:w-1/2 border-r border-slate-200 flex flex-col bg-slate-50 min-h-[50vh] lg:min-h-0">
             <div class="p-4 border-b border-slate-200 bg-white flex items-center justify-between shrink-0">
               <div class="flex items-center gap-2">
                 <i class="fa-solid fa-list-check text-indigo-600"></i>
@@ -265,7 +363,7 @@
           </div>
 
           <!-- Cột Phải: Trình biên tập tổng hợp & AI Co-pilot -->
-          <div class="w-1/2 flex flex-col bg-white">
+          <div class="w-full lg:w-1/2 flex flex-col bg-white min-h-[50vh] lg:min-h-0">
             <!-- Tabs chuyển đổi công cụ -->
             <div class="flex border-b border-slate-200 bg-slate-50 shrink-0">
               <button id="tab-btn-transcript" class="flex-1 py-3 px-4 text-center font-semibold text-xs border-b-2 border-indigo-600 text-indigo-600 flex items-center justify-center gap-1.5 transition">
@@ -722,6 +820,79 @@
     </div>
   </div>
 
+  <!-- MODAL HƯỚNG DẪN SỬ DỤNG -->
+  <div id="guide-modal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div class="bg-white w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col overflow-hidden max-h-[90vh]">
+      <div class="p-5 border-b border-slate-100 flex items-center justify-between bg-indigo-50/50">
+        <div class="flex items-center gap-2 text-indigo-600">
+          <i class="fa-solid fa-graduation-cap text-xl"></i>
+          <h3 class="font-bold text-slate-800 text-base">Hướng dẫn sử dụng cho người mới</h3>
+        </div>
+        <button id="btn-close-guide" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+      </div>
+      <div class="p-6 overflow-y-auto text-sm text-slate-700 leading-relaxed space-y-5">
+
+        <div class="bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <p class="font-semibold text-amber-800 mb-1"><i class="fa-solid fa-lightbulb mr-1"></i> App này làm gì?</p>
+          <p class="text-amber-900">Biến file ghi âm / video thành văn bản (phiên âm), rồi tóm tắt, dịch, và xuất ra biên bản chuyên nghiệp — tất cả bằng AI, chạy ngay trên máy bạn.</p>
+        </div>
+
+        <div>
+          <p class="font-bold text-slate-800 mb-2">Bước 1 — Lấy "chìa khóa AI" (API Key) miễn phí</p>
+          <p>App cần một API Key để nhờ AI làm việc. Khuyên dùng <b>Groq</b> (miễn phí, nhanh):</p>
+          <ol class="list-decimal pl-5 mt-1 space-y-0.5">
+            <li>Vào <b>console.groq.com</b>, đăng nhập bằng Google.</li>
+            <li>Vào mục <b>API Keys</b> → bấm <b>Create API Key</b>.</li>
+            <li>Copy chuỗi bắt đầu bằng <code class="bg-slate-100 px-1 rounded">gsk_...</code></li>
+          </ol>
+        </div>
+
+        <div>
+          <p class="font-bold text-slate-800 mb-2">Bước 2 — Nạp chìa khóa vào "Két sắt" (Vault)</p>
+          <ol class="list-decimal pl-5 space-y-0.5">
+            <li>Bấm nút <b>Quản lý API Key</b> ở góc trái.</li>
+            <li>Đặt một <b>mật khẩu Vault</b> (mật khẩu này để bảo vệ key của bạn) → bấm <b>Mở khóa / Thiết lập</b>.</li>
+            <li>Chọn nhà cung cấp <b>Groq</b>, đặt tên gợi nhớ, dán key <code class="bg-slate-100 px-1 rounded">gsk_...</code> vào → bấm <b>Lưu Khóa API</b>.</li>
+            <li>Bấm nút <i class="fa-solid fa-vial text-emerald-600"></i> (ống nghiệm) để <b>kiểm tra key</b> có hoạt động không.</li>
+            <li>Tích ô <b>"Ghi nhớ mật khẩu"</b> để lần sau không phải nhập lại.</li>
+          </ol>
+        </div>
+
+        <div>
+          <p class="font-bold text-slate-800 mb-2">Bước 3 — Tạo dự án & phiên âm</p>
+          <ol class="list-decimal pl-5 space-y-0.5">
+            <li>Bấm <b>Tạo Dự Án Mới</b> → đặt tên, chọn ngôn ngữ.</li>
+            <li>Chọn <b>Tải file lên</b> (chọn file MP3/WAV) hoặc <b>Ghi âm trực tiếp</b>.</li>
+            <li>Bấm <b>Tạo dự án</b>. App tự cắt nhỏ file audio.</li>
+            <li>Trong dự án, bấm <b>Bắt đầu xử lý AI</b> → chờ AI phiên âm từng đoạn.</li>
+          </ol>
+        </div>
+
+        <div>
+          <p class="font-bold text-slate-800 mb-2">Bước 4 — Biên tập & xuất bản</p>
+          <ol class="list-decimal pl-5 space-y-0.5">
+            <li>Tab <b>Văn bản Tổng hợp</b>: xem/sửa transcript, bấm <b>Đánh bóng AI</b> để làm sạch.</li>
+            <li>Tab <b>Tóm tắt</b>: bấm <b>Tạo Tóm tắt AI</b> hoặc <b>Dịch Văn bản</b>.</li>
+            <li>Tab <b>Xuất bản</b>: chọn vai trò (Biên bản họp, Phóng sự...) → <b>Copy</b> hoặc <b>Tải .MD / SRT / VTT / JSON</b>.</li>
+          </ol>
+        </div>
+
+        <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+          <p class="font-semibold text-slate-800 mb-1"><i class="fa-solid fa-triangle-exclamation text-rose-500 mr-1"></i> Gặp sự cố?</p>
+          <ul class="list-disc pl-5 space-y-0.5 text-slate-600">
+            <li><b>Lỗi 429 / hết quota:</b> key AI dùng hết lượt miễn phí trong ngày. Thêm key thứ 2 (app tự xoay vòng).</li>
+            <li><b>Không ghi âm được:</b> đóng Zoom/Teams, hoặc dùng "Tải file lên" thay thế.</li>
+            <li><b>Quên mật khẩu Vault:</b> không khôi phục được — phải xóa và thêm lại key.</li>
+          </ul>
+        </div>
+
+      </div>
+      <div class="p-4 border-t border-slate-100 flex justify-end">
+        <button id="btn-close-guide-2" class="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold py-2 px-6 rounded-lg">Đã hiểu, bắt đầu thôi!</button>
+      </div>
+    </div>
+  </div>
+  
   <!-- Nạp các file script theo đúng thứ tự trong kiến trúc -->
   <script src="js/config.js"></script>
   <script src="js/app.js"></script>

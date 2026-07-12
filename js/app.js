@@ -247,6 +247,10 @@ async function unlockVault() {
     }
     isVaultUnlocked = true;
     apiKeysList = keys;
+    // Ghi nhớ mật khẩu nếu người dùng tích chọn
+    const remember = document.getElementById("remember-vault-check");
+    if (remember && remember.checked) localStorage.setItem(REMEMBER_KEY, password);
+    else localStorage.removeItem(REMEMBER_KEY);
     updateVaultUI();
     showToast("Mở khóa Vault thành công!", "success");
   } catch (e) {
@@ -261,6 +265,7 @@ function lockVault() {
   sessionPassword = "";
   isVaultUnlocked = false;
   apiKeysList = [];
+  localStorage.removeItem(REMEMBER_KEY);
   updateVaultUI();
   showToast("Đã khóa Vault.", "info");
 }
@@ -686,6 +691,10 @@ async function processCurrentProject() {
 
   const btn = document.getElementById("btn-start-processing");
   if (btn) { btn.disabled = true; btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Đang xử lý...`; }
+  // Bật chế độ chạy ngầm bền bỉ
+  isProcessing = true;
+  requestWakeLock();
+  startSilentKeepAlive();
 
   try {
     currentProject.status = "processing";
@@ -765,10 +774,16 @@ async function processCurrentProject() {
     const editor = document.getElementById("final-transcript-editor");
     if (editor) editor.value = full.trim();
     showToast("Hoàn tất phiên âm toàn dự án!", "success");
+    notifyDone("✅ Phiên âm hoàn tất!", `Dự án "${currentProject.projectName}" đã xử lý xong.`);
   } catch (e) {
     showToast(e.message, "error");
+    notifyDone("⚠️ Xử lý bị dừng", e.message);
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = `<i class="fa-solid fa-play"></i> Bắt đầu xử lý AI`; }
+    // Tắt chế độ chạy ngầm
+    isProcessing = false;
+    releaseWakeLock();
+    stopSilentKeepAlive();
     renderProjectDetail(currentProject.projectId);
     await loadInitialData();
   }
@@ -1309,6 +1324,145 @@ function showToast(message, type = "info") {
       }
     });
   }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", ready);
+  else ready();
+})();
+
+
+// ==========================================
+// GHI NHỚ MẬT KHẨU VAULT (tiện lợi cho dùng cá nhân)
+// ==========================================
+const REMEMBER_KEY = "omni_vault_remember";
+
+// Tự mở khóa khi mở app nếu đã bật ghi nhớ
+async function tryAutoUnlock() {
+  const saved = localStorage.getItem(REMEMBER_KEY);
+  if (!saved) return;
+  try {
+    sessionPassword = saved;
+    const keys = await getAllRecords(STORE_API_KEYS);
+    if (keys.length > 0) await decryptData(keys[0].encryptedKeyData, sessionPassword);
+    isVaultUnlocked = true;
+    apiKeysList = keys;
+    updateVaultUI();
+    showToast("Đã tự động mở khóa Vault (ghi nhớ mật khẩu).", "success");
+  } catch (e) {
+    sessionPassword = "";
+    isVaultUnlocked = false;
+    localStorage.removeItem(REMEMBER_KEY); // mật khẩu lưu bị sai -> xóa
+    updateVaultUI();
+  }
+}
+
+// Chèn ô "Ghi nhớ mật khẩu" vào modal Vault
+function injectRememberCheckbox() {
+  if (document.getElementById("remember-vault-wrap")) return;
+  const btn = document.getElementById("btn-submit-vault-password");
+  if (!btn) return;
+  const wrap = document.createElement("label");
+  wrap.id = "remember-vault-wrap";
+  wrap.className = "flex items-center gap-2 mt-3 text-xs text-slate-600 cursor-pointer";
+  wrap.innerHTML = `
+    <input type="checkbox" id="remember-vault-check" class="w-4 h-4 accent-indigo-600">
+    <span>Ghi nhớ mật khẩu & tự mở khóa trên máy này (chỉ dùng nếu là máy cá nhân)</span>`;
+  // đặt ngay dưới khu vực nhập mật khẩu
+  btn.closest(".bg-slate-50")?.appendChild(wrap);
+  // đồng bộ trạng thái tick với thực tế
+  document.getElementById("remember-vault-check").checked = !!localStorage.getItem(REMEMBER_KEY);
+}
+
+// Chạy khi tải xong
+(function initRemember() {
+  function ready() {
+    injectRememberCheckbox();
+    tryAutoUnlock();
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", ready);
+  else ready();
+})();
+
+
+// ==========================================
+// MODAL HƯỚNG DẪN
+// ==========================================
+(function setupGuide() {
+  function ready() {
+    bind("btn-open-guide", "click", () => openModal("guide-modal"));
+    bind("btn-close-guide", "click", () => closeModal("guide-modal"));
+    bind("btn-close-guide-2", "click", () => closeModal("guide-modal"));
+
+    // Tự hiện hướng dẫn cho lần đầu dùng app
+    if (!localStorage.getItem("omni_guide_seen")) {
+      setTimeout(() => { openModal("guide-modal"); localStorage.setItem("omni_guide_seen", "1"); }, 800);
+    }
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", ready);
+  else ready();
+})();
+
+
+// ==========================================
+// CHẠY NGẦM CHUYÊN NGHIỆP (Background resilience)
+// ==========================================
+
+let wakeLockRef = null;
+let silentAudioEl = null;
+
+// (1) Wake Lock: giữ máy không "ngủ" khi đang xử lý
+async function requestWakeLock() {
+  try {
+    if ("wakeLock" in navigator) {
+      wakeLockRef = await navigator.wakeLock.request("screen");
+    }
+  } catch (e) { /* thiết bị không hỗ trợ, bỏ qua */ }
+}
+function releaseWakeLock() {
+  try { wakeLockRef?.release(); wakeLockRef = null; } catch (e) {}
+}
+// Nếu quay lại tab mà wake lock bị mất, xin lại
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && wakeLockRef === null && isProcessing) requestWakeLock();
+});
+
+// (2) Phát âm thanh im lặng để trình duyệt không "bóp" tab khi ẩn
+function startSilentKeepAlive() {
+  if (silentAudioEl) return;
+  // file wav im lặng cực ngắn, lặp vô hạn
+  const silent = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAgD4AAAB9AAACABAAZGF0YQAAAAA=";
+  silentAudioEl = new Audio(silent);
+  silentAudioEl.loop = true;
+  silentAudioEl.volume = 0.001;
+  silentAudioEl.play().catch(() => {});
+}
+function stopSilentKeepAlive() {
+  if (silentAudioEl) { silentAudioEl.pause(); silentAudioEl = null; }
+}
+
+// (3) Xin quyền thông báo desktop (gọi 1 lần khi mở app)
+function initNotifications() {
+  if ("Notification" in window && Notification.permission === "default") {
+    // xin quyền khi người dùng tương tác lần đầu, tránh bị chặn
+    document.body.addEventListener("click", function askOnce() {
+      Notification.requestPermission();
+      document.body.removeEventListener("click", askOnce);
+    }, { once: true });
+  }
+}
+function notifyDone(title, body) {
+  try {
+    if ("Notification" in window && Notification.permission === "granted") {
+      const n = new Notification(title, { body, icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎙️</text></svg>" });
+      n.onclick = () => { window.focus(); n.close(); };
+    }
+  } catch (e) {}
+}
+
+// Cờ báo đang xử lý (để wake lock biết)
+let isProcessing = false;
+
+// Khởi động
+(function initBackground() {
+  function ready() { initNotifications(); }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", ready);
   else ready();
 })();
